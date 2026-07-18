@@ -14,10 +14,7 @@ api_key_env = os.getenv("GEMINI_API_KEY")
 if not api_key_env:
     print("[-] [FATAL ERROR] GEMINI_API_KEY chưa được set trong biến môi trường của Render! API sẽ bị treo hoặc thất bại.", flush=True)
 
-client = genai.Client(
-    api_key=api_key_env,
-    http_options=types.HttpOptions(timeout=20000)
-)
+client = genai.Client(api_key=api_key_env)
 MODEL = 'gemini-3.1-flash-lite'
 
 # Tách toàn bộ bộ quy tắc cố định sang SYSTEM_INSTRUCTION để tận dụng Automatic Prefix Caching của Gemini API
