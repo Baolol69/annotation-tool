@@ -29,6 +29,7 @@ global_task_state = TaskState()
 action_queue = asyncio.Queue()
 playwright_context = {}
 audio_cache = {}
+processed_tasks = set()
 
 async def get_gemini_reponse_async(page: Page, task: CurrentTask):
     print(f"[DEBUG] Bắt đầu tải audio cho task {task.task_id} từ {task.audio_url_path}...")
