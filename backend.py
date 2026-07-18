@@ -26,7 +26,7 @@ HUMANSIGNAL_BASE_URL = "https://app.humansignal.com"
 
 # Global state
 global_task_state = TaskState()
-action_queue = asyncio.Queue()
+action_queue = None  # Sẽ khởi tạo bên trong event loop
 playwright_context = {}
 audio_cache = {}
 processed_tasks = set()
@@ -158,6 +158,8 @@ async def do_skip(page: Page):
 import time
 
 async def playwright_loop():
+    global action_queue
+    action_queue = asyncio.Queue()
     try:
         print("[DEBUG] Bắt đầu khởi chạy Playwright...", flush=True)
         p = await async_playwright().start()
