@@ -93,19 +93,24 @@ async def get_response_async(task_id, audio_bytes, transcript) -> AnnotationResp
         for attempt in range(max_retries):
             try:
                 import asyncio
-                response_gemini = await asyncio.wait_for(
-                    client.aio.models.generate_content(
+                # CHÚ Ý: Chạy bằng synchronous client bên trong to_thread để chống treo Event Loop!
+                # Thư viện google-genai bản aio đôi khi bị lỗi block socket khiến asyncio.wait_for bị liệt.
+                def sync_call():
+                    return client.models.generate_content(
                         model=MODEL,
                         contents=[audio_part, prompt],
                         config=CACHED_CONFIG
-                    ),
+                    )
+                    
+                response_gemini = await asyncio.wait_for(
+                    asyncio.to_thread(sync_call),
                     timeout=20.0
                 )
                 break  # Thành công thì thoát vòng lặp retry
             except Exception as api_err:
                 err_str = str(api_err)
-                is_overloaded = any(code in err_str for code in ["503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED", "timeout", "Connection"])
-                if is_overloaded and attempt < max_retries - 1:
+                is_overloaded = any(code in err_str for code in ["503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED", "timeout", "Connection", "TimeoutError"])
+                if is_overloaded or isinstance(api_err, asyncio.TimeoutError):
                     wait_time = (2 ** attempt) * 3  # Thử lại sau 3s, 6s, 12s...
                     print(f"[-] [Gemini] Server đang tải cao hoặc bận ({err_str[:60]}...). Tự động thử lại lần {attempt + 1}/{max_retries - 1} sau {wait_time}s...", flush=True)
                     import asyncio
