@@ -135,22 +135,26 @@ async def do_skip(page: Page):
 import time
 
 async def playwright_loop():
-    p = await async_playwright().start()
-    playwright_context['p'] = p
-    browser = await p.chromium.launch(headless=False)
-    context = await browser.new_context(no_viewport=True)
-    page = await context.new_page()
-    playwright_context['page'] = page
+    try:
+        p = await async_playwright().start()
+        playwright_context['p'] = p
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(no_viewport=True)
+        page = await context.new_page()
+        playwright_context['page'] = page
 
-    await page.goto(HUMANSIGNAL_LOGIN_URL)
-    await page.fill("input[name='email']", EMAIL)
-    await page.fill("input[name='password']", PASSWORD)
+        await page.goto(HUMANSIGNAL_LOGIN_URL)
+        await page.fill("input[name='email']", EMAIL)
+        await page.fill("input[name='password']", PASSWORD)
 
-    async with page.expect_navigation():
-        await page.click("button[type='submit']")
-    
-    await page.goto(HUMANSIGNAL_PROJECT_URL)
-    page.on("response", lambda x: asyncio.create_task(handle_response(page, x)))
+        async with page.expect_navigation():
+            await page.click("button[type='submit']")
+        
+        await page.goto(HUMANSIGNAL_PROJECT_URL)
+        page.on("response", lambda x: asyncio.create_task(handle_response(page, x)))
+    except Exception as e:
+        print(f"[FATAL ERROR] Playwright failed to start: {e}")
+        return
 
     global global_task_state
     last_action_time = time.time()
