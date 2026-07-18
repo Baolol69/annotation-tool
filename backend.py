@@ -129,7 +129,11 @@ async def handle_response(page: Page, response: PlaywrightResponse):
     if (is_next_task or is_get_task) and response.status == 200:
         try:
             print(f"[DEBUG] Phát hiện API trả về task: {response.url}", flush=True)
-            body = await response.json()
+            print(f"[DEBUG] Đang đọc nội dung response từ Playwright...", flush=True)
+            
+            # Thêm timeout vào phòng trường hợp Playwright bị treo khi đọc body
+            body = await asyncio.wait_for(response.json(), timeout=10)
+            print(f"[DEBUG] Đã đọc xong nội dung response!", flush=True)
             
             # The API might return a list of tasks or a single task dictionary
             if isinstance(body, list) and len(body) > 0:
@@ -150,6 +154,8 @@ async def handle_response(page: Page, response: PlaywrightResponse):
             print(f"[DEBUG] Đưa task {task.task_id} vào hàng đợi xử lý...", flush=True)
             await action_queue.put(("process_task", task))
             
+        except asyncio.TimeoutError:
+            print(f"[ERROR] Quá thời gian (10s) khi đọc response body từ Playwright!", flush=True)
         except Exception as e:
             print(f"[ERROR] Lỗi phân tích response: {e}", flush=True)
 
