@@ -165,7 +165,7 @@ async def do_submit_response(page: Page, submit_task: SubmitTask):
             try:
                 await page.fill("textarea", submit_task.transcript, timeout=3000)
             except Exception as e:
-                print(f"[ERROR] Fill transcript failed: {e}")
+                print(f"[ERROR] Fill transcript failed: {e}", flush=True)
         
         async def safe_check(val):
             if val:
@@ -173,7 +173,7 @@ async def do_submit_response(page: Page, submit_task: SubmitTask):
                     loc = page.locator(f'input[value="{val}"], input[name="{val}"]')
                     await loc.first.check(timeout=3000)
                 except Exception as e:
-                    print(f"[ERROR] Check {val} failed: {e}")
+                    print(f"[ERROR] Check {val} failed: {e}", flush=True)
 
         await safe_check(submit_task.gender)
         await safe_check(submit_task.topic)
@@ -182,21 +182,23 @@ async def do_submit_response(page: Page, submit_task: SubmitTask):
 
         try:
             await page.get_by_test_id("bottombar-submit-button").click(timeout=5000)
+            print("[DEBUG] Đã nhấn nút Submit thành công trên giao diện web!", flush=True)
         except Exception as e:
-            print(f"[ERROR] Click submit failed: {e}")
+            print(f"[ERROR] Click submit failed: {e}", flush=True)
             try:
                 await page.locator("button:has-text('Submit')").first.click(timeout=3000)
             except Exception as e2:
-                print(f"[ERROR] Click submit fallback failed: {e2}")
+                print(f"[ERROR] Click submit fallback failed: {e2}", flush=True)
 
     except Exception as e:
-        print(f"[ERROR] submit_response: {e}")
+        print(f"[ERROR] submit_response: {e}", flush=True)
 
 async def do_skip(page: Page):
     try:
         await page.get_by_test_id("bottombar-skip-button").click()
+        print("[DEBUG] Đã nhấn nút Skip thành công trên giao diện web!", flush=True)
     except Exception as e:
-        print(f"[ERROR] skip: {e}")
+        print(f"[ERROR] skip: {e}", flush=True)
 
 import time
 
@@ -244,15 +246,15 @@ async def playwright_loop():
             action, data = await action_queue.get()
             if action == "submit":
                 last_action_time = time.time()
-                print(f"[DEBUG] Bắt đầu click Submit...")
+                print(f"[DEBUG] Bắt đầu click Submit...", flush=True)
                 await do_submit_response(page, data)
-                print(f"[DEBUG] Click Submit xong mất {time.time() - last_action_time:.2f}s, đợi tải trang...")
+                print(f"[DEBUG] Click Submit xong mất {time.time() - last_action_time:.2f}s, đợi tải trang...", flush=True)
                 global_task_state = TaskState() # Reset UI
             elif action == "skip":
                 last_action_time = time.time()
-                print(f"[DEBUG] Bắt đầu click Skip...")
+                print(f"[DEBUG] Bắt đầu click Skip...", flush=True)
                 await do_skip(page)
-                print(f"[DEBUG] Click Skip xong mất {time.time() - last_action_time:.2f}s, đợi tải trang...")
+                print(f"[DEBUG] Click Skip xong mất {time.time() - last_action_time:.2f}s, đợi tải trang...", flush=True)
                 global_task_state = TaskState() # Reset UI
             elif action == "process_task":
                 task_recv_time = time.time()
