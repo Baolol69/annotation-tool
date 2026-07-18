@@ -81,6 +81,7 @@ async def get_gemini_reponse_async(page: Page, task: CurrentTask):
             print(f"[DEBUG-AUDIO] Cảnh báo, lỗi dùng wave ({e}), tự động trả về file gốc!", flush=True)
             return raw_bytes
 
+    raw_audio_bytes = await asyncio.to_thread(download_audio)
     final_audio_bytes = await asyncio.to_thread(process_audio_fast, raw_audio_bytes)
     print(f"[DEBUG] Xử lý âm thanh siêu tốc xong ({len(final_audio_bytes)} bytes). Gửi tới Gemini API...", flush=True)
     
