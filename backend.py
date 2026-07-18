@@ -9,7 +9,6 @@ import asyncio
 from playwright.async_api import async_playwright, Page, Response as PlaywrightResponse
 import os
 import io
-from pydub import AudioSegment
 import numpy as np
 from gemini import get_response, AnnotationResponse
 from schemas import CurrentTask, SubmitTask, TaskState

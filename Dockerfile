@@ -11,6 +11,10 @@ RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Install Playwright browsers and OS dependencies
+RUN playwright install chromium
+RUN playwright install-deps chromium
+
 # Copy all source files
 COPY . .
 

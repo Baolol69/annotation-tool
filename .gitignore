@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 .gradio/
 current_audio.wav
+venv/
