@@ -163,7 +163,7 @@ import time
 
 async def playwright_loop():
     try:
-        print("[DEBUG] Bắt đầu khởi chạy Playwright...")
+        print("[DEBUG] Bắt đầu khởi chạy Playwright...", flush=True)
         p = await async_playwright().start()
         playwright_context['p'] = p
         browser = await p.chromium.launch(headless=True)
@@ -171,21 +171,27 @@ async def playwright_loop():
         page = await context.new_page()
         playwright_context['page'] = page
 
-        print(f"[DEBUG] Đang truy cập trang đăng nhập: {HUMANSIGNAL_LOGIN_URL}")
+        print(f"[DEBUG] Đang truy cập trang đăng nhập: {HUMANSIGNAL_LOGIN_URL}", flush=True)
         await page.goto(HUMANSIGNAL_LOGIN_URL)
+        
+        print(f"[DEBUG] Đã load xong trang đăng nhập, đang điền thông tin...", flush=True)
+        if not EMAIL or not PASSWORD:
+            print("[FATAL ERROR] Thiếu EMAIL hoặc PASSWORD trong Environment Variables!", flush=True)
+            return
+            
         await page.fill("input[name='email']", EMAIL)
         await page.fill("input[name='password']", PASSWORD)
 
-        print("[DEBUG] Đang đăng nhập...")
+        print("[DEBUG] Đang bấm nút đăng nhập...", flush=True)
         async with page.expect_navigation():
             await page.click("button[type='submit']")
         
-        print(f"[DEBUG] Đăng nhập thành công! Chuyển tới trang dự án: {HUMANSIGNAL_PROJECT_URL}")
+        print(f"[DEBUG] Đăng nhập thành công! Chuyển tới trang dự án: {HUMANSIGNAL_PROJECT_URL}", flush=True)
         await page.goto(HUMANSIGNAL_PROJECT_URL)
         page.on("response", lambda x: asyncio.create_task(handle_response(page, x)))
-        print("[DEBUG] Đã gài hook bắt request, đang chờ task xuất hiện...")
+        print("[DEBUG] Đã gài hook bắt request, đang chờ task xuất hiện...", flush=True)
     except Exception as e:
-        print(f"[FATAL ERROR] Playwright failed to start: {e}")
+        print(f"[FATAL ERROR] Playwright failed to start: {e}", flush=True)
         return
 
     global global_task_state
