@@ -44,34 +44,46 @@ async def get_gemini_reponse_async(page: Page, task: CurrentTask):
         resp.raise_for_status()
         return resp.content
         
-    raw_audio_bytes = await asyncio.to_thread(download_audio)
-    print(f"[DEBUG] Tải xong audio ({len(raw_audio_bytes)} bytes). Bắt đầu xử lý âm thanh...", flush=True)
-    
-    def process_audio(raw_bytes):
+    def process_audio_fast(raw_bytes):
+        import wave
+        import io
+        import audioop
         try:
-            print("[DEBUG-AUDIO] Bắt đầu process_audio...", flush=True)
-            raw_ram_buffer = io.BytesIO(raw_bytes)
-            print("[DEBUG-AUDIO] Gọi AudioSegment.from_file...", flush=True)
-            audio = AudioSegment.from_file(raw_ram_buffer)
-            print("[DEBUG-AUDIO] Đã load AudioSegment thành công!", flush=True)
-            audio = audio.set_channels(1)
-            audio = audio.set_frame_rate(16000)
-            audio = audio + 5
-            print("[DEBUG-AUDIO] Đã chỉnh sửa audio (mono, 16kHz, +5dB).", flush=True)
-            processed_ram_buffer = io.BytesIO()
-            audio.export(processed_ram_buffer, format="wav")
-            print("[DEBUG-AUDIO] Đã export thành công!", flush=True)
-            return processed_ram_buffer.getvalue()
-        except Exception as e:
-            print(f"[DEBUG-AUDIO] LỖI trong process_audio: {e}", flush=True)
-            raise e
+            with wave.open(io.BytesIO(raw_bytes), 'rb') as wav_in:
+                n_channels = wav_in.getnchannels()
+                sampwidth = wav_in.getsampwidth()
+                framerate = wav_in.getframerate()
+                n_frames = wav_in.getnframes()
+                audio_data = wav_in.readframes(n_frames)
 
-    try:
-        final_audio_bytes = await asyncio.to_thread(process_audio, raw_audio_bytes)
-    except Exception as e:
-        print(f"[ERROR] Hàm process_audio đã bị crash: {e}", flush=True)
-        raise e
-    print(f"[DEBUG] Xử lý âm thanh xong. Gửi tới Gemini API...", flush=True)
+            # 1. Chuyển sang Mono nếu đang là Stereo
+            if n_channels == 2:
+                audio_data = audioop.tomono(audio_data, sampwidth, 1, 1)
+                n_channels = 1
+                
+            # 2. Resample về 16000Hz để giảm dung lượng cực nhanh
+            if framerate != 16000:
+                audio_data, _ = audioop.ratecv(audio_data, sampwidth, n_channels, framerate, 16000, None)
+                framerate = 16000
+                
+            # 3. Tăng âm lượng lên khoảng +5dB (nhân hệ số ~1.778)
+            audio_data = audioop.mul(audio_data, sampwidth, 1.778)
+
+            out_buffer = io.BytesIO()
+            with wave.open(out_buffer, 'wb') as wav_out:
+                wav_out.setnchannels(n_channels)
+                wav_out.setsampwidth(sampwidth)
+                wav_out.setframerate(framerate)
+                wav_out.writeframes(audio_data)
+
+            return out_buffer.getvalue()
+        except Exception as e:
+            print(f"[DEBUG-AUDIO] Cảnh báo, lỗi dùng wave ({e}), tự động trả về file gốc!", flush=True)
+            return raw_bytes
+
+    final_audio_bytes = await asyncio.to_thread(process_audio_fast, raw_audio_bytes)
+    print(f"[DEBUG] Xử lý âm thanh siêu tốc xong ({len(final_audio_bytes)} bytes). Gửi tới Gemini API...", flush=True)
+    
     from gemini import get_response_async
     annotation_response = await get_response_async(task.task_id, final_audio_bytes, task.prediction)
     print(f"[DEBUG] Nhận được kết quả từ Gemini cho task {task.task_id}!", flush=True)
