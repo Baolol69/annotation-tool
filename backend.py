@@ -48,16 +48,29 @@ async def get_gemini_reponse_async(page: Page, task: CurrentTask):
     print(f"[DEBUG] Tải xong audio ({len(raw_audio_bytes)} bytes). Bắt đầu xử lý âm thanh...", flush=True)
     
     def process_audio(raw_bytes):
-        raw_ram_buffer = io.BytesIO(raw_bytes)
-        audio = AudioSegment.from_file(raw_ram_buffer)
-        audio = audio.set_channels(1)
-        audio = audio.set_frame_rate(16000)
-        audio = audio + 5
-        processed_ram_buffer = io.BytesIO()
-        audio.export(processed_ram_buffer, format="wav")
-        return processed_ram_buffer.getvalue()
+        try:
+            print("[DEBUG-AUDIO] Bắt đầu process_audio...", flush=True)
+            raw_ram_buffer = io.BytesIO(raw_bytes)
+            print("[DEBUG-AUDIO] Gọi AudioSegment.from_file...", flush=True)
+            audio = AudioSegment.from_file(raw_ram_buffer)
+            print("[DEBUG-AUDIO] Đã load AudioSegment thành công!", flush=True)
+            audio = audio.set_channels(1)
+            audio = audio.set_frame_rate(16000)
+            audio = audio + 5
+            print("[DEBUG-AUDIO] Đã chỉnh sửa audio (mono, 16kHz, +5dB).", flush=True)
+            processed_ram_buffer = io.BytesIO()
+            audio.export(processed_ram_buffer, format="wav")
+            print("[DEBUG-AUDIO] Đã export thành công!", flush=True)
+            return processed_ram_buffer.getvalue()
+        except Exception as e:
+            print(f"[DEBUG-AUDIO] LỖI trong process_audio: {e}", flush=True)
+            raise e
 
-    final_audio_bytes = await asyncio.to_thread(process_audio, raw_audio_bytes)
+    try:
+        final_audio_bytes = await asyncio.to_thread(process_audio, raw_audio_bytes)
+    except Exception as e:
+        print(f"[ERROR] Hàm process_audio đã bị crash: {e}", flush=True)
+        raise e
     print(f"[DEBUG] Xử lý âm thanh xong. Gửi tới Gemini API...", flush=True)
     from gemini import get_response_async
     annotation_response = await get_response_async(task.task_id, final_audio_bytes, task.prediction)
