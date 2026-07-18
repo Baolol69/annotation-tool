@@ -14,25 +14,26 @@ def wait_for_next_task():
     # Block and poll until a new task is found
     while True:
         try:
+            import sys
             # Long-polling: wait up to 60s for the backend event to trigger
-            print(f"[FRONTEND] Đang poll /api/task...", flush=True)
+            print(f"[FRONTEND] Đang poll /api/task...", file=sys.stderr, flush=True)
             resp = requests.get(f"{BACKEND_URL}/api/task", timeout=60)
-            print(f"[FRONTEND] /api/task trả về status {resp.status_code}", flush=True)
+            print(f"[FRONTEND] /api/task trả về status {resp.status_code}", file=sys.stderr, flush=True)
             if resp.status_code == 200:
                 data = resp.json()
-                print(f"[FRONTEND] Nhận được data: task={bool(data.get('task'))}, gemini={bool(data.get('gemini_response'))}", flush=True)
+                print(f"[FRONTEND] Nhận được data: task={bool(data.get('task'))}, gemini={bool(data.get('gemini_response'))}", file=sys.stderr, flush=True)
                 if data.get("task") and data.get("gemini_response"):
                     audio_url = data["task"]["audio_data"]
                     try:
-                        print(f"[FRONTEND] Đang tải audio từ {audio_url}...", flush=True)
+                        print(f"[FRONTEND] Đang tải audio từ {audio_url}...", file=sys.stderr, flush=True)
                         audio_resp = requests.get(audio_url, timeout=5)
                         temp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
                         temp_audio.write(audio_resp.content)
                         temp_audio.close()
                         audio_filepath = temp_audio.name
-                        print(f"[FRONTEND] Tải audio thành công lưu tại {audio_filepath}", flush=True)
+                        print(f"[FRONTEND] Tải audio thành công lưu tại {audio_filepath}", file=sys.stderr, flush=True)
                     except Exception as e:
-                        print(f"[ERROR] Failed to download audio from {audio_url}: {e}", flush=True)
+                        print(f"[ERROR] Failed to download audio from {audio_url}: {e}", file=sys.stderr, flush=True)
                         audio_filepath = None
 
                     return (
@@ -44,11 +45,11 @@ def wait_for_next_task():
                         data["gemini_response"]["topic"]
                     )
                 else:
-                    print(f"[FRONTEND] Data chưa đầy đủ, tiếp tục đợi...", flush=True)
+                    print(f"[FRONTEND] Data chưa đầy đủ, tiếp tục đợi...", file=sys.stderr, flush=True)
         except requests.exceptions.ReadTimeout:
             pass
         except Exception as e:
-            print(f"[ERROR] Lỗi khi poll /api/task: {e}", flush=True)
+            print(f"[ERROR] Lỗi khi poll /api/task: {e}", file=sys.stderr, flush=True)
         time.sleep(1)
 
 def build_ui():
