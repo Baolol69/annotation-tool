@@ -177,8 +177,9 @@ async def do_submit_response(page: Page, submit_task: SubmitTask):
 
         await safe_check(submit_task.gender)
         await safe_check(submit_task.topic)
-        for issue in submit_task.audio_issues:
-            await safe_check(issue)
+        if submit_task.audio_issues:
+            for issue in submit_task.audio_issues:
+                await safe_check(issue)
 
         try:
             await page.get_by_test_id("bottombar-submit-button").click(timeout=5000)

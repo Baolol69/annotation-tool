@@ -53,12 +53,16 @@ def build_ui():
             "audio_issues": audio_issues
         }
         try:
-            requests.post(f"{BACKEND_URL}/api/submit", json=payload, timeout=5)
+            print(f"[FRONTEND] Chuẩn bị gửi submit lên backend: {payload}", flush=True)
+            resp = requests.post(f"{BACKEND_URL}/api/submit", json=payload, timeout=5)
+            print(f"[FRONTEND] Backend trả về status: {resp.status_code}, nội dung: {resp.text}", flush=True)
+            resp.raise_for_status()
             current_task_id = None # Reset so we wait for the next one
         except Exception as e:
-            print(f"[ERROR] Submit failed: {e}")
+            print(f"[ERROR] Submit failed: {e}", flush=True)
             return gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip()
         
+        print(f"[FRONTEND] Bắt đầu đợi task tiếp theo...", flush=True)
         return wait_for_next_task()
 
     def skip():

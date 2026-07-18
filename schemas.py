@@ -12,7 +12,7 @@ class SubmitTask(BaseModel):
     transcript: Optional[str] = ""
     gender: Optional[str] = ""
     topic: Optional[str] = ""
-    audio_issues: List[str] = []
+    audio_issues: Optional[List[str]] = None
 
 class AnnotationResponse(BaseModel):
     transcript: str

@@ -166,7 +166,7 @@ async def get_response_async(task_id, audio_bytes, transcript) -> AnnotationResp
         return AnnotationResponse(**json.loads(text))
     except Exception as total_err:
         # Bảo vệ tối đa: Nếu gọi API thất bại hết các lần thử lại hoặc gặp lỗi mạng nặng, trả về fallback an toàn
-        print(f"[-] [Gemini] Không thể lấy kết quả AI sau các lần thử lại ({total_err}). Tự động fallback để không gián đoạn Playwright...")
+        print(f"[-] [Gemini] Không thể lấy kết quả AI sau các lần thử lại ({total_err}). Tự động fallback để không gián đoạn Playwright...", flush=True)
         fallback_obj = {
             "transcript": transcript,
             "gender": "Unknown",
