@@ -187,8 +187,8 @@ async def playwright_loop():
             await page.click("button[type='submit']")
         
         print(f"[DEBUG] Đăng nhập thành công! Chuyển tới trang dự án: {HUMANSIGNAL_PROJECT_URL}", flush=True)
-        await page.goto(HUMANSIGNAL_PROJECT_URL)
         page.on("response", lambda x: asyncio.create_task(handle_response(page, x)))
+        await page.goto(HUMANSIGNAL_PROJECT_URL)
         print("[DEBUG] Đã gài hook bắt request, đang chờ task xuất hiện...", flush=True)
     except Exception as e:
         print(f"[FATAL ERROR] Playwright failed to start: {e}", flush=True)
