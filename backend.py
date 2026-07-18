@@ -286,6 +286,8 @@ async def playwright_loop():
         except Exception as e:
             print(f"[ERROR] Playwright loop error: {e}", flush=True)
 
+    print("[FATAL ERROR] Vòng lặp Playwright đã bị thoát (page closed)!!!", flush=True)
+
 from contextlib import asynccontextmanager
 
 @asynccontextmanager
