@@ -81,9 +81,23 @@ async def get_gemini_reponse_async(page: Page, task: CurrentTask):
             print(f"[DEBUG-AUDIO] Cảnh báo, lỗi dùng wave ({e}), tự động trả về file gốc!", flush=True)
             return raw_bytes
 
-    raw_audio_bytes = await asyncio.to_thread(download_audio)
-    final_audio_bytes = await asyncio.to_thread(process_audio_fast, raw_audio_bytes)
-    print(f"[DEBUG] Xử lý âm thanh siêu tốc xong ({len(final_audio_bytes)} bytes). Gửi tới Gemini API...", flush=True)
+    try:
+        raw_audio_bytes = await asyncio.wait_for(
+            asyncio.to_thread(download_audio),
+            timeout=40.0
+        )
+        final_audio_bytes = await asyncio.to_thread(process_audio_fast, raw_audio_bytes)
+        print(f"[DEBUG] Xử lý âm thanh siêu tốc xong ({len(final_audio_bytes)} bytes). Gửi tới Gemini API...", flush=True)
+    except Exception as e:
+        print(f"[ERROR] Lỗi tải audio từ HumanSignal ({e})! Bỏ qua audio để chống kẹt hệ thống.", flush=True)
+        import wave, io
+        out_buffer = io.BytesIO()
+        with wave.open(out_buffer, 'wb') as wav_out:
+            wav_out.setnchannels(1)
+            wav_out.setsampwidth(2)
+            wav_out.setframerate(16000)
+            wav_out.writeframes(b'\x00' * 32000) # 1 second of silence
+        final_audio_bytes = out_buffer.getvalue()
     
     from gemini import get_response_async
     annotation_response = await get_response_async(task.task_id, final_audio_bytes, task.prediction)
