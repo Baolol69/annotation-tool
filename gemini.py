@@ -10,7 +10,14 @@ from dotenv import load_dotenv
 from schemas import AnnotationResponse
 load_dotenv()
 
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+api_key_env = os.getenv("GEMINI_API_KEY")
+if not api_key_env:
+    print("[-] [FATAL ERROR] GEMINI_API_KEY chưa được set trong biến môi trường của Render! API sẽ bị treo hoặc thất bại.", flush=True)
+
+client = genai.Client(
+    api_key=api_key_env,
+    http_options=types.HttpOptions(timeout=20000)
+)
 MODEL = 'gemini-3.1-flash-lite'
 
 # Tách toàn bộ bộ quy tắc cố định sang SYSTEM_INSTRUCTION để tận dụng Automatic Prefix Caching của Gemini API
@@ -88,10 +95,14 @@ async def get_response_async(task_id, audio_bytes, transcript) -> AnnotationResp
         max_retries = 4
         for attempt in range(max_retries):
             try:
-                response_gemini = await client.aio.models.generate_content(
-                    model=MODEL,
-                    contents=[audio_part, prompt],
-                    config=CACHED_CONFIG
+                import asyncio
+                response_gemini = await asyncio.wait_for(
+                    client.aio.models.generate_content(
+                        model=MODEL,
+                        contents=[audio_part, prompt],
+                        config=CACHED_CONFIG
+                    ),
+                    timeout=20.0
                 )
                 break  # Thành công thì thoát vòng lặp retry
             except Exception as api_err:
