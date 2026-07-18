@@ -69,6 +69,11 @@ CACHED_CONFIG = types.GenerateContentConfig(
 LOCAL_RESPONSE_CACHE = {}
 
 def get_response(task_id, audio_bytes, transcript) -> AnnotationResponse:
+    # We keep the sync signature for backward compatibility or if needed elsewhere, 
+    # but we will actually create an async version for playwright_loop
+    pass
+
+async def get_response_async(task_id, audio_bytes, transcript) -> AnnotationResponse:
     cache_key = hashlib.md5(f"{task_id}".encode('utf-8')).hexdigest()
     if cache_key in LOCAL_RESPONSE_CACHE:
         print(f"-> [Gemini Cache] Trả về kết quả lập tức từ bộ nhớ đệm cho task!")
@@ -76,16 +81,14 @@ def get_response(task_id, audio_bytes, transcript) -> AnnotationResponse:
         return AnnotationResponse(**json.loads(cached_text))
 
     audio_part = types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav")
-    # Prompt cho từng request chỉ cần ngắn gọn chứa transcript nháp (nhẹ hơn, tận dụng tối đa Prefix Cache)
     prompt = f'Hãy nghe file âm thanh đính kèm và rà soát đoạn transcript nháp sau đây:\n"{transcript}"'
-    print(f"-> [Gemini] Đang gửi yêu cầu xử lý tới model {MODEL}...")
+    print(f"-> [Gemini] Đang gửi yêu cầu xử lý tới model {MODEL}...", flush=True)
     
     try:
-        # Vòng lặp tự động thử lại (Retry Mechanism) nếu gặp lỗi 503 (High demand) hoặc 429 (Rate limit)
         max_retries = 4
         for attempt in range(max_retries):
             try:
-                response_gemini = client.models.generate_content(
+                response_gemini = await client.aio.models.generate_content(
                     model=MODEL,
                     contents=[audio_part, prompt],
                     config=CACHED_CONFIG
@@ -96,12 +99,13 @@ def get_response(task_id, audio_bytes, transcript) -> AnnotationResponse:
                 is_overloaded = any(code in err_str for code in ["503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED", "timeout", "Connection"])
                 if is_overloaded and attempt < max_retries - 1:
                     wait_time = (2 ** attempt) * 3  # Thử lại sau 3s, 6s, 12s...
-                    print(f"[-] [Gemini] Server đang tải cao hoặc bận ({err_str[:60]}...). Tự động thử lại lần {attempt + 1}/{max_retries - 1} sau {wait_time}s...")
-                    time.sleep(wait_time)
+                    print(f"[-] [Gemini] Server đang tải cao hoặc bận ({err_str[:60]}...). Tự động thử lại lần {attempt + 1}/{max_retries - 1} sau {wait_time}s...", flush=True)
+                    import asyncio
+                    await asyncio.sleep(wait_time)
                 else:
                     raise api_err
 
-        print(f"-> [Gemini] Nhận kết quả thành công từ AI!")
+        print(f"-> [Gemini] Nhận kết quả thành công từ AI!", flush=True)
         text = response_gemini.text.strip()
         
         # Loại bỏ markdown code block nếu có
@@ -121,7 +125,6 @@ def get_response(task_id, audio_bytes, transcript) -> AnnotationResponse:
                 obj, end_idx = decoder.raw_decode(text, start_brace)
                 text = text[start_brace:end_idx]
             except Exception as e:
-                # Nếu chuỗi JSON bị thừa dấu nháy/xuống dòng do AI ngẫu nhiên sinh lỗi syntax, cố gắng làm sạch
                 cleaned_text = re.sub(r'"\s*\n+\s*"(\s*[,}])', r'"\1', text[start_brace:])
                 try:
                     obj, end_idx = decoder.raw_decode(cleaned_text, 0)
@@ -131,11 +134,10 @@ def get_response(task_id, audio_bytes, transcript) -> AnnotationResponse:
                     if end_brace > start_brace:
                         text = text[start_brace:end_brace+1]
                         
-        # Kiểm tra tính hợp lệ của JSON trước khi trả về cho main.py
         try:
             json.loads(text)
         except Exception as e:
-            print(f"[-] [Gemini] Cảnh báo JSON trả về bị lỗi cú pháp ({e}). Tự động fallback để bảo vệ luồng trình duyệt...")
+            print(f"[-] [Gemini] Cảnh báo JSON trả về bị lỗi cú pháp ({e}). Tự động fallback để bảo vệ luồng trình duyệt...", flush=True)
             fallback_obj = {
                 "transcript": transcript,
                 "gender": "Unknown",

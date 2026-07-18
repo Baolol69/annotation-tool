@@ -59,7 +59,8 @@ async def get_gemini_reponse_async(page: Page, task: CurrentTask):
 
     final_audio_bytes = await asyncio.to_thread(process_audio, raw_audio_bytes)
     print(f"[DEBUG] Xử lý âm thanh xong. Gửi tới Gemini API...", flush=True)
-    annotation_response = await asyncio.to_thread(get_response, task.task_id, final_audio_bytes, task.prediction)
+    from gemini import get_response_async
+    annotation_response = await get_response_async(task.task_id, final_audio_bytes, task.prediction)
     print(f"[DEBUG] Nhận được kết quả từ Gemini cho task {task.task_id}!", flush=True)
     return annotation_response, final_audio_bytes
 
