@@ -31,8 +31,10 @@ playwright_context = {}
 audio_cache = {}
 
 async def get_gemini_reponse_async(page: Page, task: CurrentTask):
+    print(f"[DEBUG] Bắt đầu tải audio cho task {task.task_id} từ {task.audio_url_path}...")
     response = await page.context.request.get(task.audio_url_path)
     raw_audio_bytes = await response.body()
+    print(f"[DEBUG] Tải xong audio ({len(raw_audio_bytes)} bytes). Bắt đầu xử lý âm thanh...")
     
     def process_audio(raw_bytes):
         raw_ram_buffer = io.BytesIO(raw_bytes)
@@ -45,7 +47,9 @@ async def get_gemini_reponse_async(page: Page, task: CurrentTask):
         return processed_ram_buffer.getvalue()
 
     final_audio_bytes = await asyncio.to_thread(process_audio, raw_audio_bytes)
+    print(f"[DEBUG] Xử lý âm thanh xong. Gửi tới Gemini API...")
     annotation_response = await asyncio.to_thread(get_response, task.task_id, final_audio_bytes, task.prediction)
+    print(f"[DEBUG] Nhận được kết quả từ Gemini cho task {task.task_id}!")
     return annotation_response, final_audio_bytes
 
 def extract_prediction(response_body: dict) -> str:
@@ -79,19 +83,42 @@ def response_parser(response_body: dict) -> CurrentTask:
     )
 
 async def handle_response(page: Page, response: PlaywrightResponse):
-    is_next_task = "api/dm/actions?id=next_task" in response.url
-    is_get_task = "api/tasks/" in response.url and response.request.method == "GET"
+    global global_task_state
+    if "/api/projects/" in response.url and "/tasks?" in response.url and response.status == 200:
+        try:
+            print(f"[DEBUG] Phát hiện API trả về task: {response.url}")
+            body = await response.json()
+            if body and isinstance(body, list) and len(body) > 0:
+                task_data = body[0]
+                task_id = str(task_data.get("id"))
+                
+                # Bỏ qua nếu đã xử lý
+                if task_id and task_id in processed_tasks:
+                    print(f"[DEBUG] Bỏ qua task {task_id} vì đã xử lý.")
+                    return
+                processed_tasks.add(task_id)
 
-    if not (is_next_task or is_get_task) or response.status != 200:
-        return
-    
-    try:
-        response_body = await response.json()
-        task = response_parser(response_body)
-        print(f"[INFO] Queuing task {task.task_id} for processing")
-        await action_queue.put(("process_task", task))
-    except Exception as e:
-        print(f"[ERROR] handle_response parsing failed: {e}")
+                prediction_text = extract_prediction(task_data)
+                
+                audio_url_path = None
+                if "data" in task_data and "audio" in task_data["data"]:
+                    audio_url_path = HUMANSIGNAL_BASE_URL + task_data["data"]["audio"]
+                
+                if not audio_url_path:
+                    print(f"[ERROR] Task {task_id} không có dữ liệu audio.")
+                    return
+                    
+                current_task = CurrentTask(
+                    task_id=task_id,
+                    audio_url_path=audio_url_path,
+                    prediction=prediction_text
+                )
+                
+                print(f"[DEBUG] Đưa task {task_id} vào hàng đợi xử lý...")
+                await action_queue.put(("process_task", current_task))
+                
+        except Exception as e:
+            print(f"[ERROR] Lỗi phân tích response: {e}")
 
 async def do_submit_response(page: Page, submit_task: SubmitTask):
     try:
@@ -136,6 +163,7 @@ import time
 
 async def playwright_loop():
     try:
+        print("[DEBUG] Bắt đầu khởi chạy Playwright...")
         p = await async_playwright().start()
         playwright_context['p'] = p
         browser = await p.chromium.launch(headless=True)
@@ -143,15 +171,19 @@ async def playwright_loop():
         page = await context.new_page()
         playwright_context['page'] = page
 
+        print(f"[DEBUG] Đang truy cập trang đăng nhập: {HUMANSIGNAL_LOGIN_URL}")
         await page.goto(HUMANSIGNAL_LOGIN_URL)
         await page.fill("input[name='email']", EMAIL)
         await page.fill("input[name='password']", PASSWORD)
 
+        print("[DEBUG] Đang đăng nhập...")
         async with page.expect_navigation():
             await page.click("button[type='submit']")
         
+        print(f"[DEBUG] Đăng nhập thành công! Chuyển tới trang dự án: {HUMANSIGNAL_PROJECT_URL}")
         await page.goto(HUMANSIGNAL_PROJECT_URL)
         page.on("response", lambda x: asyncio.create_task(handle_response(page, x)))
+        print("[DEBUG] Đã gài hook bắt request, đang chờ task xuất hiện...")
     except Exception as e:
         print(f"[FATAL ERROR] Playwright failed to start: {e}")
         return
