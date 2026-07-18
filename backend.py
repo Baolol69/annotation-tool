@@ -32,10 +32,20 @@ audio_cache = {}
 processed_tasks = set()
 
 async def get_gemini_reponse_async(page: Page, task: CurrentTask):
-    print(f"[DEBUG] Bắt đầu tải audio cho task {task.task_id} từ {task.audio_url_path}...")
-    response = await page.context.request.get(task.audio_url_path)
-    raw_audio_bytes = await response.body()
-    print(f"[DEBUG] Tải xong audio ({len(raw_audio_bytes)} bytes). Bắt đầu xử lý âm thanh...")
+    print(f"[DEBUG] Bắt đầu tải audio cho task {task.task_id} từ {task.audio_url_path}...", flush=True)
+    
+    # Get cookies to authenticate the request
+    cookies = await page.context.cookies()
+    cookie_dict = {c["name"]: c["value"] for c in cookies}
+    
+    def download_audio():
+        import requests
+        resp = requests.get(task.audio_url_path, cookies=cookie_dict, timeout=30)
+        resp.raise_for_status()
+        return resp.content
+        
+    raw_audio_bytes = await asyncio.to_thread(download_audio)
+    print(f"[DEBUG] Tải xong audio ({len(raw_audio_bytes)} bytes). Bắt đầu xử lý âm thanh...", flush=True)
     
     def process_audio(raw_bytes):
         raw_ram_buffer = io.BytesIO(raw_bytes)
@@ -48,9 +58,9 @@ async def get_gemini_reponse_async(page: Page, task: CurrentTask):
         return processed_ram_buffer.getvalue()
 
     final_audio_bytes = await asyncio.to_thread(process_audio, raw_audio_bytes)
-    print(f"[DEBUG] Xử lý âm thanh xong. Gửi tới Gemini API...")
+    print(f"[DEBUG] Xử lý âm thanh xong. Gửi tới Gemini API...", flush=True)
     annotation_response = await asyncio.to_thread(get_response, task.task_id, final_audio_bytes, task.prediction)
-    print(f"[DEBUG] Nhận được kết quả từ Gemini cho task {task.task_id}!")
+    print(f"[DEBUG] Nhận được kết quả từ Gemini cho task {task.task_id}!", flush=True)
     return annotation_response, final_audio_bytes
 
 def extract_prediction(response_body: dict) -> str:
@@ -234,7 +244,7 @@ async def playwright_loop():
                 task_ready_event.set()
                 
         except Exception as e:
-            print(f"[ERROR] Playwright loop error: {e}")
+            print(f"[ERROR] Playwright loop error: {e}", flush=True)
 
 from contextlib import asynccontextmanager
 
