@@ -84,41 +84,36 @@ def response_parser(response_body: dict) -> CurrentTask:
 
 async def handle_response(page: Page, response: PlaywrightResponse):
     global global_task_state
-    if "/api/projects/" in response.url and "/tasks?" in response.url and response.status == 200:
-        try:
-            print(f"[DEBUG] Phát hiện API trả về task: {response.url}")
-            body = await response.json()
-            if body and isinstance(body, list) and len(body) > 0:
-                task_data = body[0]
-                task_id = str(task_data.get("id"))
-                
-                # Bỏ qua nếu đã xử lý
-                if task_id and task_id in processed_tasks:
-                    print(f"[DEBUG] Bỏ qua task {task_id} vì đã xử lý.")
-                    return
-                processed_tasks.add(task_id)
+    
+    is_next_task = "api/dm/actions?id=next_task" in response.url
+    is_get_task = "api/tasks/" in response.url and response.request.method == "GET"
 
-                prediction_text = extract_prediction(task_data)
+    if (is_next_task or is_get_task) and response.status == 200:
+        try:
+            print(f"[DEBUG] Phát hiện API trả về task: {response.url}", flush=True)
+            body = await response.json()
+            
+            # The API might return a list of tasks or a single task dictionary
+            if isinstance(body, list) and len(body) > 0:
+                task_data = body[0]
+            elif isinstance(body, dict):
+                task_data = body
+            else:
+                return
                 
-                audio_url_path = None
-                if "data" in task_data and "audio" in task_data["data"]:
-                    audio_url_path = HUMANSIGNAL_BASE_URL + task_data["data"]["audio"]
-                
-                if not audio_url_path:
-                    print(f"[ERROR] Task {task_id} không có dữ liệu audio.")
-                    return
-                    
-                current_task = CurrentTask(
-                    task_id=task_id,
-                    audio_url_path=audio_url_path,
-                    prediction=prediction_text
-                )
-                
-                print(f"[DEBUG] Đưa task {task_id} vào hàng đợi xử lý...")
-                await action_queue.put(("process_task", current_task))
-                
+            task = response_parser(task_data)
+            
+            # Bỏ qua nếu đã xử lý
+            if task.task_id in processed_tasks:
+                print(f"[DEBUG] Bỏ qua task {task.task_id} vì đã xử lý.", flush=True)
+                return
+            processed_tasks.add(task.task_id)
+            
+            print(f"[DEBUG] Đưa task {task.task_id} vào hàng đợi xử lý...", flush=True)
+            await action_queue.put(("process_task", task))
+            
         except Exception as e:
-            print(f"[ERROR] Lỗi phân tích response: {e}")
+            print(f"[ERROR] Lỗi phân tích response: {e}", flush=True)
 
 async def do_submit_response(page: Page, submit_task: SubmitTask):
     try:
@@ -189,7 +184,7 @@ async def playwright_loop():
         page.on("response", lambda x: asyncio.create_task(handle_response(page, x)))
         print("[DEBUG] Đã gài hook bắt request, đang chờ task xuất hiện...", flush=True)
         print(f"[DEBUG] Đăng nhập thành công! Chuyển tới trang dự án: {HUMANSIGNAL_PROJECT_URL}", flush=True)
-        await page.goto(HUMANSIGNAL_PROJECT_URL)
+        await page.goto(HUMANSIGNAL_PROJECT_URL, wait_until="domcontentloaded")
         
     except Exception as e:
         print(f"[FATAL ERROR] Playwright failed to start: {e}", flush=True)
