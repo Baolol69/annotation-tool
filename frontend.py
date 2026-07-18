@@ -26,8 +26,9 @@ def wait_for_next_task():
                         temp_audio.write(audio_resp.content)
                         temp_audio.close()
                         audio_filepath = temp_audio.name
+                        print(f"[FRONTEND] Tải audio thành công từ {audio_url}", flush=True)
                     except Exception as e:
-                        print(f"[ERROR] Failed to download audio: {e}")
+                        print(f"[ERROR] Failed to download audio from {audio_url}: {e}", flush=True)
                         audio_filepath = None
 
                     return (

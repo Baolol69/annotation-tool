@@ -257,17 +257,21 @@ async def playwright_loop():
                 annotation_resp, audio_bytes = await get_gemini_reponse_async(page, data)
                 
                 end_time = time.time()
-                print(f"[DEBUG] Xử lý AI & Audio xong mất {end_time - task_recv_time:.2f}s")
+                print(f"[DEBUG] Xử lý AI & Audio xong mất {end_time - task_recv_time:.2f}s", flush=True)
                 if last_action_time:
-                    print(f"[DEBUG] === TỔNG THỜI GIAN CHUYỂN TASK: {end_time - last_action_time:.2f}s ===")
+                    print(f"[DEBUG] === TỔNG THỜI GIAN CHUYỂN TASK: {end_time - last_action_time:.2f}s ===", flush=True)
 
                 # Store audio in cache and assign URL
                 audio_cache[data.task_id] = audio_bytes
-                data.audio_data = f"http://127.0.0.1:8000/api/audio/{data.task_id}"
+                
+                # Sửa lỗi hardcode port 8000
+                import os
+                current_port = os.environ.get("PORT", "8000")
+                data.audio_data = f"http://127.0.0.1:{current_port}/api/audio/{data.task_id}"
 
                 global_task_state.task = data
                 global_task_state.gemini_response = annotation_resp
-                print(f"[INFO] Task state updated for UI")
+                print(f"[INFO] Task state updated for UI. ĐÃ MỞ KHÓA GIAO DIỆN CHỜ NGƯỜI DÙNG BẤM NÚT!", flush=True)
                 task_ready_event.set()
                 
         except Exception as e:
