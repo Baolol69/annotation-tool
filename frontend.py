@@ -5,7 +5,7 @@ from typing import List
 import tempfile
 import os
 
-PORT = os.environ.get("PORT", "8000")
+PORT = os.environ.get("PORT", "7860")
 BACKEND_URL = f"http://127.0.0.1:{PORT}"
 
 current_task_id = None
