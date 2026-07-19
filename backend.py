@@ -267,6 +267,8 @@ async def playwright_loop():
                 '--disable-extensions',
                 '--js-flags="--max-old-space-size=128"', # Ép giới hạn RAM của React xuống 128MB
                 '--disable-site-isolation-trials' # Tắt chế độ chia cách trang web ngốn RAM
+                '--single-process', # Ép chạy 1 process duy nhất để giảm cực mạnh RAM
+
             ]
         )
         context = await browser.new_context(no_viewport=True)
