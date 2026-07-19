@@ -164,7 +164,12 @@ async def handle_response(page: Page, response: PlaywrightResponse):
     is_next_task = "api/dm/actions?id=next_task" in response.url
     is_get_task = "api/tasks/" in response.url and response.request.method == "GET"
 
-    if (is_next_task or is_get_task) and response.status == 200:
+    if is_next_task or is_get_task:
+        print(f"[DEBUG-API] Bắt được request: {response.url} | Status: {response.status}", flush=True)
+        if response.status != 200:
+            print(f"[ERROR] API bị chặn hoặc lỗi (Status {response.status}). Có thể bị Cloudflare block!", flush=True)
+            return
+
         try:
             print(f"[DEBUG] Phát hiện API trả về task: {response.url}", flush=True)
             print(f"[DEBUG] Đang đọc nội dung response từ Playwright...", flush=True)
@@ -300,6 +305,11 @@ async def playwright_loop():
         print(f"[DEBUG] Đăng nhập thành công! Chuyển tới trang dự án: {HUMANSIGNAL_PROJECT_URL}", flush=True)
         await page.goto(HUMANSIGNAL_PROJECT_URL, wait_until="domcontentloaded")
         
+        page_title = await page.title()
+        print(f"[DEBUG] Tiêu đề trang web hiện tại: {page_title}", flush=True)
+        if "Just a moment" in page_title or "Attention" in page_title or "Cloudflare" in page_title:
+            print("[FATAL ERROR] Trình duyệt đã bị Cloudflare chặn (Captcha). Cần sử dụng proxy hoặc stealth!", flush=True)
+            
     except Exception as e:
         print(f"[FATAL ERROR] Playwright failed to start: {e}", flush=True)
         return
