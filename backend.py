@@ -223,8 +223,30 @@ async def playwright_loop():
         print("[DEBUG] Bắt đầu khởi chạy Playwright...", flush=True)
         p = await async_playwright().start()
         playwright_context['p'] = p
-        browser = await p.chromium.launch(headless=True)
+        
+        # Cấu hình siêu tiết kiệm RAM cho Render (512MB limit)
+        browser = await p.chromium.launch(
+            headless=True,
+            args=[
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage', # Tránh crash do thiếu shared memory
+                '--disable-gpu',
+                '--no-zygote',
+                '--disable-extensions'
+            ]
+        )
         context = await browser.new_context(no_viewport=True)
+        
+        # Chặn tải hình ảnh, font chữ, video để tiết kiệm tối đa RAM và băng thông
+        async def route_interceptor(route):
+            if route.request.resource_type in ["image", "font", "stylesheet"]:
+                await route.abort()
+            else:
+                await route.continue_()
+        
+        await context.route("**/*", route_interceptor)
+        
         page = await context.new_page()
         playwright_context['page'] = page
 
