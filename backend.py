@@ -235,14 +235,15 @@ async def playwright_loop():
                 '--no-zygote',
                 '--disable-extensions',
                 '--single-process', # Ép chạy 1 process duy nhất để giảm cực mạnh RAM
-                '--js-flags="--max-old-space-size=128"' # Ép giới hạn RAM của React xuống 128MB
+                '--js-flags="--max-old-space-size=128"', # Ép giới hạn RAM của React xuống 128MB
+                '--disable-site-isolation-trials' # Tắt chế độ chia cách trang web ngốn RAM
             ]
         )
         context = await browser.new_context(no_viewport=True)
         
         # Chặn tải hình ảnh, font chữ, video để tiết kiệm tối đa RAM và băng thông
         async def route_interceptor(route):
-            if route.request.resource_type in ["image", "font", "stylesheet"]:
+            if route.request.resource_type in ["image", "font", "stylesheet", "media"]:
                 await route.abort()
             else:
                 await route.continue_()
@@ -308,6 +309,7 @@ async def playwright_loop():
                     print(f"[DEBUG] === TỔNG THỜI GIAN CHUYỂN TASK: {end_time - last_action_time:.2f}s ===", flush=True)
 
                 # Store audio in cache and assign URL
+                audio_cache.clear() # XÓA BỘ NHỚ ĐỆM CŨ ĐỂ CHỐNG TRÀN RAM PYTHON
                 audio_cache[data.task_id] = audio_bytes
                 
                 # Sửa lỗi hardcode port 8000
