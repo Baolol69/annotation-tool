@@ -59,8 +59,13 @@ async def get_gemini_reponse_async(page: Page, task: CurrentTask):
     
     def download_audio():
         import requests
-        resp = requests.get(task.audio_url_path, cookies=cookie_dict, timeout=30)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        print(f"[DEBUG-AUDIO] Đang gửi GET request tải audio (Timeout 15s)...", flush=True)
+        resp = requests.get(task.audio_url_path, cookies=cookie_dict, headers=headers, timeout=15, allow_redirects=True)
         resp.raise_for_status()
+        print(f"[DEBUG-AUDIO] Tải xong file âm thanh gốc: {len(resp.content)} bytes", flush=True)
         return resp.content
         
     def process_audio_fast(raw_bytes):
