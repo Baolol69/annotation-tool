@@ -8,6 +8,26 @@ import os
 PORT = os.environ.get("PORT", "7860")
 BACKEND_URL = f"http://127.0.0.1:{PORT}"
 
+def log_memory(stage: str):
+    import sys
+    try:
+        if sys.platform == "linux":
+            with open('/proc/meminfo') as f:
+                meminfo = f.read()
+            mem_total = int([x for x in meminfo.split('\n') if 'MemTotal' in x][0].split()[1])
+            mem_available = int([x for x in meminfo.split('\n') if 'MemAvailable' in x][0].split()[1])
+            mem_used_mb = (mem_total - mem_available) / 1024
+            print(f"[MEMORY] {stage} | HỆ THỐNG DÙNG: {mem_used_mb:.2f} MB", file=sys.stderr, flush=True)
+            
+            with open('/proc/self/status') as f:
+                for line in f:
+                    if 'VmRSS' in line:
+                        py_mem_mb = int(line.split()[1]) / 1024
+                        print(f"[MEMORY] {stage} | LÕI PYTHON (Gradio/FastAPI) DÙNG: {py_mem_mb:.2f} MB", file=sys.stderr, flush=True)
+                        break
+    except Exception:
+        pass
+
 current_task_id = None
 
 def wait_for_next_task():
@@ -36,6 +56,8 @@ def wait_for_next_task():
                         print(f"[ERROR] Failed to download audio from {audio_url}: {e}", file=sys.stderr, flush=True)
                         audio_filepath = None
 
+                    log_memory("FRONTEND: Giao diện vừa Load xong Task mới")
+
                     return (
                         audio_filepath,
                         data["task"]["prediction"],
@@ -55,6 +77,9 @@ def wait_for_next_task():
 def build_ui():
     def submit(transcript:str, dialect:str, gender:str, topic:str, audio_issues:List[str]):
         global current_task_id
+        
+        log_memory("FRONTEND: Người dùng bấm Submit")
+        
         payload = {
             "transcript": transcript,
             "gender": gender,

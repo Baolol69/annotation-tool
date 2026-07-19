@@ -23,6 +23,26 @@ HUMANSIGNAL_LOGIN_URL = "https://app.humansignal.com/user/login/"
 HUMANSIGNAL_PROJECT_URL = "https://app.humansignal.com/projects/213452/labeling"
 HUMANSIGNAL_BASE_URL = "https://app.humansignal.com"
 
+def log_memory(stage: str):
+    import sys
+    try:
+        if sys.platform == "linux":
+            with open('/proc/meminfo') as f:
+                meminfo = f.read()
+            mem_total = int([x for x in meminfo.split('\n') if 'MemTotal' in x][0].split()[1])
+            mem_available = int([x for x in meminfo.split('\n') if 'MemAvailable' in x][0].split()[1])
+            mem_used_mb = (mem_total - mem_available) / 1024
+            print(f"[MEMORY] {stage} | HỆ THỐNG DÙNG: {mem_used_mb:.2f} MB", flush=True)
+            
+            with open('/proc/self/status') as f:
+                for line in f:
+                    if 'VmRSS' in line:
+                        py_mem_mb = int(line.split()[1]) / 1024
+                        print(f"[MEMORY] {stage} | LÕI PYTHON (Gradio/FastAPI) DÙNG: {py_mem_mb:.2f} MB", flush=True)
+                        break
+    except Exception:
+        pass
+
 # Global state
 global_task_state = TaskState()
 action_queue = None  # Sẽ khởi tạo bên trong event loop
@@ -220,6 +240,7 @@ async def playwright_loop():
     global action_queue
     action_queue = asyncio.Queue()
     try:
+        log_memory("TRƯỚC KHI MỞ PLAYWRIGHT")
         print("[DEBUG] Bắt đầu khởi chạy Playwright...", flush=True)
         p = await async_playwright().start()
         playwright_context['p'] = p
@@ -267,6 +288,8 @@ async def playwright_loop():
         async with page.expect_navigation():
             await page.click("button[type='submit']")
         
+        log_memory("SAU KHI MỞ TRANG WEB (PLAYWRIGHT)")
+        
         page.on("response", lambda x: asyncio.create_task(handle_response(page, x)))
         print("[DEBUG] Đã gài hook bắt request, đang chờ task xuất hiện...", flush=True)
         print(f"[DEBUG] Đăng nhập thành công! Chuyển tới trang dự án: {HUMANSIGNAL_PROJECT_URL}", flush=True)
@@ -300,7 +323,10 @@ async def playwright_loop():
                     print(f"[DEBUG] Mạng trả về Task mới sau {task_recv_time - last_action_time:.2f}s (kể từ lúc nhấn nút). Đang xử lý AI...")
                 
                 print(f"[INFO] Processing task {data.task_id}")
+                
+                log_memory("TRƯỚC KHI TẢI AUDIO & GỌI GEMINI")
                 annotation_resp, audio_bytes = await get_gemini_reponse_async(page, data)
+                log_memory("SAU KHI GỌI GEMINI & TRẢ KẾT QUẢ")
                 
                 end_time = time.time()
                 print(f"[DEBUG] Xử lý AI & Audio xong mất {end_time - task_recv_time:.2f}s", flush=True)
