@@ -233,7 +233,9 @@ async def playwright_loop():
                 '--disable-dev-shm-usage', # Tránh crash do thiếu shared memory
                 '--disable-gpu',
                 '--no-zygote',
-                '--disable-extensions'
+                '--disable-extensions',
+                '--single-process', # Ép chạy 1 process duy nhất để giảm cực mạnh RAM
+                '--js-flags="--max-old-space-size=128"' # Ép giới hạn RAM của React xuống 128MB
             ]
         )
         context = await browser.new_context(no_viewport=True)
@@ -320,6 +322,10 @@ async def playwright_loop():
                 
         except Exception as e:
             print(f"[ERROR] Playwright loop error: {e}", flush=True)
+            
+        # Giải phóng bộ nhớ rác sau mỗi vòng lặp để chống tràn RAM 512MB
+        import gc
+        gc.collect()
 
     print("[FATAL ERROR] Vòng lặp Playwright đã bị thoát (page closed)!!!", flush=True)
 
