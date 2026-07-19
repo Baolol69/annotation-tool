@@ -234,7 +234,6 @@ async def playwright_loop():
                 '--disable-gpu',
                 '--no-zygote',
                 '--disable-extensions',
-                '--single-process', # Ép chạy 1 process duy nhất để giảm cực mạnh RAM
                 '--js-flags="--max-old-space-size=128"', # Ép giới hạn RAM của React xuống 128MB
                 '--disable-site-isolation-trials' # Tắt chế độ chia cách trang web ngốn RAM
             ]
