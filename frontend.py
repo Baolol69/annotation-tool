@@ -11,20 +11,22 @@ BACKEND_URL = f"http://127.0.0.1:{PORT}"
 def log_memory(stage: str):
     import sys
     try:
-        if sys.platform == "linux":
-            with open('/proc/meminfo') as f:
-                meminfo = f.read()
-            mem_total = int([x for x in meminfo.split('\n') if 'MemTotal' in x][0].split()[1])
-            mem_available = int([x for x in meminfo.split('\n') if 'MemAvailable' in x][0].split()[1])
-            mem_used_mb = (mem_total - mem_available) / 1024
-            print(f"[MEMORY] {stage} | HỆ THỐNG DÙNG: {mem_used_mb:.2f} MB", file=sys.stderr, flush=True)
-            
-            with open('/proc/self/status') as f:
-                for line in f:
-                    if 'VmRSS' in line:
-                        py_mem_mb = int(line.split()[1]) / 1024
-                        print(f"[MEMORY] {stage} | LÕI PYTHON (Gradio/FastAPI) DÙNG: {py_mem_mb:.2f} MB", file=sys.stderr, flush=True)
-                        break
+        import psutil
+        import os
+        process = psutil.Process(os.getpid())
+        mem_info = process.memory_info()
+        print(f"[MEMORY] {stage} | TÀI NGUYÊN PYTHON ĐANG DÙNG: {mem_info.rss / 1024 / 1024:.2f} MB", file=sys.stderr, flush=True)
+    except ImportError:
+        try:
+            if sys.platform == "linux":
+                with open('/proc/self/status') as f:
+                    for line in f:
+                        if 'VmRSS' in line:
+                            py_mem_mb = int(line.split()[1]) / 1024
+                            print(f"[MEMORY] {stage} | TÀI NGUYÊN PYTHON ĐANG DÙNG: {py_mem_mb:.2f} MB", file=sys.stderr, flush=True)
+                            break
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -69,9 +71,17 @@ def wait_for_next_task():
                     ref_id = info.get("ref_id", "N/A")
                     province = info.get("province", "N/A")
                     duration = info.get("duration", "N/A")
-                    if isinstance(duration, float):
-                        duration = round(duration, 2)
-                    info_text = f"📄 File: {ref_id} | 📍 Tỉnh: {province} | ⏱️ {duration}s"
+                    try:
+                        import psutil
+                        import os
+                        process = psutil.Process(os.getpid())
+                        mem_mb = process.memory_info().rss / 1024 / 1024
+                        sys_percent = psutil.virtual_memory().percent
+                        ram_str = f" | 💻 RAM: {mem_mb:.1f}MB (Sys {sys_percent}%)"
+                    except Exception:
+                        ram_str = ""
+                        
+                    info_text = f"### 📄 File: {ref_id} | 📍 Tỉnh: {province} | ⏱️ {duration}s{ram_str}"
 
                     # YIELD 1: Hiển thị Audio ngay lập tức, xóa trắng Textbox
                     print(f"[FRONTEND] YIELD 1: Trả Audio về giao diện ngay lập tức...", flush=True)
@@ -103,9 +113,16 @@ def wait_for_next_task():
                     ref_id = info.get("ref_id", "N/A")
                     province = info.get("province", "N/A")
                     duration = info.get("duration", "N/A")
-                    if isinstance(duration, float):
-                        duration = round(duration, 2)
-                    info_text = f"📄 File: {ref_id} | 📍 Tỉnh: {province} | ⏱️ {duration}s"
+                    try:
+                        import psutil
+                        import os
+                        process = psutil.Process(os.getpid())
+                        mem_mb = process.memory_info().rss / 1024 / 1024
+                        sys_percent = psutil.virtual_memory().percent
+                        ram_str = f" | 💻 RAM: {mem_mb:.1f}MB (Sys {sys_percent}%)"
+                    except Exception:
+                        ram_str = ""
+                    info_text = f"### 📄 File: {ref_id} | 📍 Tỉnh: {province} | ⏱️ {duration}s{ram_str}"
                     
                     # YIELD 2: Cập nhật text của AI vào giao diện
                     print(f"[FRONTEND] YIELD 2: AI xong! Cập nhật text vào giao diện...", flush=True)
