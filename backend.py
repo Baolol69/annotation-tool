@@ -9,6 +9,11 @@ import asyncio
 from playwright.async_api import async_playwright, Page, Response as PlaywrightResponse
 import os
 import io
+import copy
+import datetime
+import random
+import string
+import time
 import numpy as np
 from gemini import get_response, AnnotationResponse
 from schemas import CurrentTask, SubmitTask, TaskState
@@ -338,7 +343,6 @@ async def api_polling_loop():
                     current_task = global_task_state.task
                     
                     # Submit using aiohttp
-                    import copy, datetime, random, string
                     def generate_id(length=10):
                         return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
                     
@@ -573,8 +577,9 @@ if __name__ == "__main__":
     import os
     port = int(os.environ.get("PORT", 7860))
     
-    # Khởi động Ngrok thông qua module riêng
-    import ngrok_tunnel
-    ngrok_tunnel.start_ngrok(port)
+    # Khởi động Ngrok thông qua module riêng nếu USE_NGROK=true
+    if os.environ.get("USE_NGROK", "true").lower() == "true":
+        import ngrok_tunnel
+        ngrok_tunnel.start_ngrok(port)
 
     uvicorn.run(app, host="0.0.0.0", port=port, loop="asyncio")
