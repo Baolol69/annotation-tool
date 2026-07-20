@@ -7,6 +7,10 @@ class CurrentTask(BaseModel):
     region: str = ""
     audio_url_path: str = ""
     audio_data: Any = None
+    project_id: str = ""
+    parent_prediction_id: Optional[int] = None
+    original_result: List[Any] = []
+    task_info: dict = {}
 
 class SubmitTask(BaseModel):
     transcript: Optional[str] = ""

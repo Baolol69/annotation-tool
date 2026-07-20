@@ -31,47 +31,98 @@ def log_memory(stage: str):
 current_task_id = None
 
 def wait_for_next_task():
-    # Block and poll until a new task is found
+    # Phase 1: Chờ và tải Audio ngay lập tức
+    task_data = None
+    audio_filepath = None
+    
     while True:
         try:
-            import sys
-            # Long-polling: wait up to 60s for the backend event to trigger
-            print(f"[FRONTEND] Đang poll /api/task...", file=sys.stderr, flush=True)
-            resp = requests.get(f"{BACKEND_URL}/api/task", timeout=60)
-            print(f"[FRONTEND] /api/task trả về status {resp.status_code}", file=sys.stderr, flush=True)
+            print(f"[FRONTEND] Đang poll /api/task (Chờ Audio)...", flush=True)
+            resp = requests.get(f"{BACKEND_URL}/api/task?wait_gemini=false", timeout=60)
             if resp.status_code == 200:
                 data = resp.json()
-                print(f"[FRONTEND] Nhận được data: task={bool(data.get('task'))}, gemini={bool(data.get('gemini_response'))}", file=sys.stderr, flush=True)
-                if data.get("task") and data.get("gemini_response"):
-                    audio_url = data["task"]["audio_data"]
+                if data.get("task"):
+                    task_data = data["task"]
+                    audio_url = task_data["audio_data"]
                     try:
-                        print(f"[FRONTEND] Đang tải audio từ {audio_url}...", file=sys.stderr, flush=True)
+                        print(f"[FRONTEND] Bắt đầu tải audio từ {audio_url}...", flush=True)
                         audio_resp = requests.get(audio_url, timeout=5)
-                        temp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-                        temp_audio.write(audio_resp.content)
-                        temp_audio.close()
-                        audio_filepath = temp_audio.name
-                        print(f"[FRONTEND] Tải audio thành công lưu tại {audio_filepath}", file=sys.stderr, flush=True)
+                        audio_bytes = audio_resp.content
+                        import wave, io, numpy as np
+                        with wave.open(io.BytesIO(audio_bytes), 'rb') as wf:
+                            sr = wf.getframerate()
+                            n_channels = wf.getnchannels()
+                            sampwidth = wf.getsampwidth()
+                            frames = wf.readframes(wf.getnframes())
+                            dtype = np.int16 if sampwidth == 2 else np.int8
+                            audio_arr = np.frombuffer(frames, dtype=dtype)
+                            if n_channels == 2:
+                                audio_arr = audio_arr.reshape(-1, 2)
+                        audio_filepath = (sr, audio_arr)
                     except Exception as e:
-                        print(f"[ERROR] Failed to download audio from {audio_url}: {e}", file=sys.stderr, flush=True)
+                        print(f"[ERROR] Lỗi parse audio: {e}", flush=True)
                         audio_filepath = None
 
-                    log_memory("FRONTEND: Giao diện vừa Load xong Task mới")
+                    log_memory("FRONTEND: Giao diện vừa tải xong Audio")
 
-                    return (
-                        audio_filepath,
-                        data["task"]["prediction"],
-                        data["gemini_response"]["transcript"],
-                        data["task"]["region"],
-                        data["gemini_response"]["gender"],
-                        data["gemini_response"]["topic"]
+                    info = task_data.get("task_info", {})
+                    ref_id = info.get("ref_id", "N/A")
+                    province = info.get("province", "N/A")
+                    duration = info.get("duration", "N/A")
+                    if isinstance(duration, float):
+                        duration = round(duration, 2)
+                    info_text = f"📄 File: {ref_id} | 📍 Tỉnh: {province} | ⏱️ {duration}s"
+
+                    # YIELD 1: Hiển thị Audio ngay lập tức, xóa trắng Textbox
+                    print(f"[FRONTEND] YIELD 1: Trả Audio về giao diện ngay lập tức...", flush=True)
+                    yield (
+                        info_text,
+                        gr.Audio(value=audio_filepath, autoplay=True),
+                        task_data["prediction"],
+                        "", # Xóa text cũ
+                        task_data["region"],
+                        "N/A", # Reset
+                        "Others" # Reset
                     )
-                else:
-                    print(f"[FRONTEND] Data chưa đầy đủ, tiếp tục đợi...", file=sys.stderr, flush=True)
+                    break
         except requests.exceptions.ReadTimeout:
             pass
         except Exception as e:
-            print(f"[ERROR] Lỗi khi poll /api/task: {e}", file=sys.stderr, flush=True)
+            print(f"[ERROR] Lỗi khi poll /api/task: {e}", flush=True)
+        time.sleep(1)
+        
+    # Phase 2: Tiếp tục đợi AI xử lý xong ngầm
+    while True:
+        try:
+            print(f"[FRONTEND] Đang poll /api/task (Chờ AI nền)...", flush=True)
+            resp = requests.get(f"{BACKEND_URL}/api/task?wait_gemini=true", timeout=60)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("gemini_response"):
+                    info = task_data.get("task_info", {})
+                    ref_id = info.get("ref_id", "N/A")
+                    province = info.get("province", "N/A")
+                    duration = info.get("duration", "N/A")
+                    if isinstance(duration, float):
+                        duration = round(duration, 2)
+                    info_text = f"📄 File: {ref_id} | 📍 Tỉnh: {province} | ⏱️ {duration}s"
+                    
+                    # YIELD 2: Cập nhật text của AI vào giao diện
+                    print(f"[FRONTEND] YIELD 2: AI xong! Cập nhật text vào giao diện...", flush=True)
+                    yield (
+                        info_text,
+                        gr.Audio(), # Giữ nguyên Audio đang phát
+                        task_data["prediction"],
+                        data["gemini_response"]["transcript"],
+                        task_data["region"],
+                        data["gemini_response"]["gender"],
+                        data["gemini_response"]["topic"]
+                    )
+                    break
+        except requests.exceptions.ReadTimeout:
+            pass
+        except Exception as e:
+            print(f"[ERROR] Lỗi khi poll /api/task cho Gemini: {e}", flush=True)
         time.sleep(1)
 
 def build_ui():
@@ -94,10 +145,11 @@ def build_ui():
             current_task_id = None # Reset so we wait for the next one
         except Exception as e:
             print(f"[ERROR] Submit failed: {e}", flush=True)
-            return gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip()
+            yield gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip()
+            return
         
         print(f"[FRONTEND] Bắt đầu đợi task tiếp theo...", flush=True)
-        return wait_for_next_task()
+        yield from wait_for_next_task()
 
     def skip():
         global current_task_id
@@ -106,12 +158,15 @@ def build_ui():
             current_task_id = None
         except Exception as e:
             print(f"[ERROR] Skip failed: {e}")
-            return gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip()
+            yield gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip()
+            return
             
-        return wait_for_next_task()
+        yield from wait_for_next_task()
 
     with gr.Blocks() as demo:
-        audio_player = gr.Audio(label="Audio Player", interactive=False)
+        gr.Markdown("# 🚀 PHIÊN BẢN ĐÃ CẬP NHẬT (KẾT NỐI CHỦ ĐỘNG)")
+        metadata_view = gr.Markdown("### 📄 Đang chờ dữ liệu...")
+        audio_player = gr.Audio(label="Audio Player", interactive=False, autoplay=True)
         zip_label = gr.Textbox(
             label="Zip Label", 
             value="ZIP_Vidu_Khong_Cho_Sua.zip",
@@ -138,10 +193,11 @@ def build_ui():
         submit_button = gr.Button("Submit", variant="primary")
         skip_button = gr.Button("Skip", variant="primary")
 
-        outputs_list = [audio_player, zip_label, transcript, dialect, gender, topic]
+        outputs_list = [metadata_view, audio_player, zip_label, transcript, dialect, gender, topic]
 
-        # Trigger on load
-        demo.load(fn=wait_for_next_task, inputs=None, outputs=outputs_list)
+        # Trigger on load (Replaced with a manual button to prevent infinite loading on startup)
+        connect_button = gr.Button("🔴 BẤM VÀO ĐÂY ĐỂ BẮT ĐẦU TẢI TASK", variant="primary")
+        connect_button.click(fn=wait_for_next_task, inputs=None, outputs=outputs_list)
         
         # Trigger on click
         submit_button.click(fn=submit, inputs=[transcript, dialect, gender, topic, quality_issues], outputs=outputs_list)
@@ -151,4 +207,5 @@ def build_ui():
 
 if __name__ == "__main__":
     demo = build_ui()
-    demo.launch(theme=gr.themes.Soft(), share=True)
+    demo.launch(theme=gr.themes.Soft(), share=True, server_port=7861)
+ 
