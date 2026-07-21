@@ -5,7 +5,7 @@ from typing import List
 import tempfile
 import os
 
-PORT = os.environ.get("PORT", "7860")
+PORT = os.environ.get("PORT", "8000")
 BACKEND_URL = f"http://127.0.0.1:{PORT}"
 
 def log_memory(stage: str):
@@ -83,63 +83,23 @@ def wait_for_next_task():
                         
                     info_text = f"### 📄 File: {ref_id} | 📍 Tỉnh: {province} | ⏱️ {duration}s{ram_str}"
 
-                    # YIELD 1: Hiển thị Audio ngay lập tức, xóa trắng Textbox
-                    print(f"[FRONTEND] YIELD 1: Trả Audio về giao diện ngay lập tức...", flush=True)
+                    gemini_resp = data.get("gemini_response") or {}
+                    
+                    # YIELD 1: Hiển thị Audio và kết quả AI ngay lập tức
+                    print(f"[FRONTEND] YIELD: Trả Audio và AI về giao diện ngay lập tức...", flush=True)
                     yield (
                         info_text,
                         gr.Audio(value=audio_filepath, autoplay=True),
-                        task_data["prediction"],
-                        "", # Xóa text cũ
+                        gemini_resp.get("transcript", ""),
                         task_data["region"],
-                        "N/A", # Reset
-                        "Others" # Reset
+                        gemini_resp.get("gender", "N/A"),
+                        gemini_resp.get("topic", "Others")
                     )
                     break
         except requests.exceptions.ReadTimeout:
             pass
         except Exception as e:
             print(f"[ERROR] Lỗi khi poll /api/task: {e}", flush=True)
-        time.sleep(1)
-        
-    # Phase 2: Tiếp tục đợi AI xử lý xong ngầm
-    while True:
-        try:
-            print(f"[FRONTEND] Đang poll /api/task (Chờ AI nền)...", flush=True)
-            resp = requests.get(f"{BACKEND_URL}/api/task?wait_gemini=true", timeout=60)
-            if resp.status_code == 200:
-                data = resp.json()
-                if data.get("gemini_response"):
-                    info = task_data.get("task_info", {})
-                    ref_id = info.get("ref_id", "N/A")
-                    province = info.get("province", "N/A")
-                    duration = info.get("duration", "N/A")
-                    try:
-                        import psutil
-                        import os
-                        process = psutil.Process(os.getpid())
-                        mem_mb = process.memory_info().rss / 1024 / 1024
-                        sys_percent = psutil.virtual_memory().percent
-                        ram_str = f" | 💻 RAM: {mem_mb:.1f}MB (Sys {sys_percent}%)"
-                    except Exception:
-                        ram_str = ""
-                    info_text = f"### 📄 File: {ref_id} | 📍 Tỉnh: {province} | ⏱️ {duration}s{ram_str}"
-                    
-                    # YIELD 2: Cập nhật text của AI vào giao diện
-                    print(f"[FRONTEND] YIELD 2: AI xong! Cập nhật text vào giao diện...", flush=True)
-                    yield (
-                        info_text,
-                        gr.Audio(), # Giữ nguyên Audio đang phát
-                        task_data["prediction"],
-                        data["gemini_response"]["transcript"],
-                        task_data["region"],
-                        data["gemini_response"]["gender"],
-                        data["gemini_response"]["topic"]
-                    )
-                    break
-        except requests.exceptions.ReadTimeout:
-            pass
-        except Exception as e:
-            print(f"[ERROR] Lỗi khi poll /api/task cho Gemini: {e}", flush=True)
         time.sleep(1)
 
 def build_ui():
@@ -162,7 +122,7 @@ def build_ui():
             current_task_id = None # Reset so we wait for the next one
         except Exception as e:
             print(f"[ERROR] Submit failed: {e}", flush=True)
-            yield gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip()
+            yield gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip()
             return
         
         print(f"[FRONTEND] Bắt đầu đợi task tiếp theo...", flush=True)
@@ -175,7 +135,7 @@ def build_ui():
             current_task_id = None
         except Exception as e:
             print(f"[ERROR] Skip failed: {e}")
-            yield gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip()
+            yield gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip()
             return
             
         yield from wait_for_next_task()
@@ -184,11 +144,6 @@ def build_ui():
         gr.Markdown("# 🚀 PHIÊN BẢN ĐÃ CẬP NHẬT (KẾT NỐI CHỦ ĐỘNG)")
         metadata_view = gr.Markdown("### 📄 Đang chờ dữ liệu...")
         audio_player = gr.Audio(label="Audio Player", interactive=False, autoplay=True)
-        zip_label = gr.Textbox(
-            label="Zip Label", 
-            value="ZIP_Vidu_Khong_Cho_Sua.zip",
-            interactive=False 
-        )
 
         transcript = gr.Textbox(
             label="Transcript", 
@@ -210,7 +165,7 @@ def build_ui():
         submit_button = gr.Button("Submit", variant="primary")
         skip_button = gr.Button("Skip", variant="primary")
 
-        outputs_list = [metadata_view, audio_player, zip_label, transcript, dialect, gender, topic]
+        outputs_list = [metadata_view, audio_player, transcript, dialect, gender, topic]
 
         # Trigger on load (Replaced with a manual button to prevent infinite loading on startup)
         connect_button = gr.Button("🔴 BẤM VÀO ĐÂY ĐỂ BẮT ĐẦU TẢI TASK", variant="primary")
