@@ -330,7 +330,7 @@ async def api_polling_loop():
                     task_data, final_audio_bytes, annotation_resp = await ready_queue.get()
                     
                     import os
-                    current_port = os.environ.get("PORT", "7860")
+                    current_port = os.environ.get("PORT", "8000")
                     task_data.audio_data = f"http://127.0.0.1:{current_port}/api/audio/{task_data.task_id}"
                     
                     global_task_state.task = task_data
