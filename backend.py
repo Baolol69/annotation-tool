@@ -173,8 +173,12 @@ async def pagination_loop(session: aiohttp.ClientSession, project_id: str, prefe
                     
                     found_any = False
                     for t in tasks:
-                        # Kiểm tra task chưa làm
-                        if not t.get("is_labeled", False):
+                        # Kiểm tra task chưa làm một cách triệt để
+                        has_annotations = len(t.get("annotations", [])) > 0
+                        has_drafts = len(t.get("drafts", [])) > 0
+                        is_labeled = t.get("is_labeled", False)
+                        
+                        if not is_labeled and not has_annotations and not has_drafts:
                             task_obj = response_parser(t)
                             
                             cached_task = None
@@ -374,8 +378,9 @@ async def api_polling_loop():
                     async def do_post(url, payload, task_id):
                         try:
                             async with session.post(url, json=payload) as response:
-                                if response.status in (200, 201):
-                                    print("[DEBUG] Submit API nền thành công!", flush=True)
+                                resp_text = await response.text()
+                                if response.status in (200, 201) or (response.status == 400 and ("OVERLAP_REACHED" in resp_text or "already have an annotation" in resp_text)):
+                                    print(f"[DEBUG] Submit API nền thành công (Task {task_id} đã được lưu hoặc trùng lặp)!", flush=True)
                                     if 'db_pool' in globals() and db_pool:
                                         try:
                                             async with db_pool.acquire() as conn:
@@ -383,7 +388,7 @@ async def api_polling_loop():
                                         except Exception as db_e:
                                             print(f"[ERROR] Lỗi update DB sau submit: {db_e}")
                                 else:
-                                    print(f"[ERROR] Submit API thất bại, status = {response.status}", flush=True)
+                                    print(f"[ERROR] Submit API thất bại, status = {response.status} | Chi tiết: {resp_text}", flush=True)
                         except Exception as e:
                             print(f"[ERROR] Lỗi submit: {e}")
                             
