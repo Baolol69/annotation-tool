@@ -454,7 +454,7 @@ async def lifespan(app: FastAPI):
         try:
             import asyncpg
             print("[DEBUG] Đang kết nối tới PostgreSQL...")
-            db_pool = await asyncpg.create_pool(db_uri)
+            db_pool = await asyncpg.create_pool(db_uri, min_size=1, max_size=3)
             async with db_pool.acquire() as conn:
                 await conn.execute('''
                     CREATE TABLE IF NOT EXISTS gemini_cache (
