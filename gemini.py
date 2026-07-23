@@ -27,7 +27,7 @@ client = genai.Client(
 
 # [THAY ĐỔI 3]: Vertex AI thường sử dụng phiên bản model cụ thể hoặc alias chuẩn. 
 # Khuyên dùng gemini-1.5-flash hoặc gemini-2.5-flash thay vì 'gemini-flash-latest' của AI Studio.
-MODEL = 'gemini-1.5-flash' 
+MODEL = 'gemini-3.1-flash-lite' 
 
 # Tách toàn bộ bộ quy tắc cố định sang SYSTEM_INSTRUCTION để tận dụng Automatic Prefix Caching của Gemini API
 SYSTEM_INSTRUCTION = """
