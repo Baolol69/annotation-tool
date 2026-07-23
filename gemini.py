@@ -5,17 +5,29 @@ import json
 import hashlib
 import re
 import time
+import asyncio
 
 from dotenv import load_dotenv
 from schemas import AnnotationResponse
 load_dotenv()
 
-api_key_env = os.getenv("GEMINI_API_KEY")
-if not api_key_env:
-    print("[-] [FATAL ERROR] GEMINI_API_KEY chưa được set trong biến môi trường của Render! API sẽ bị treo hoặc thất bại.", flush=True)
+# [THAY ĐỔI 1]: Thay vì dùng API_KEY, Vertex AI dùng Project ID và Location
+PROJECT_ID = os.getenv("GCP_PROJECT_ID")
+LOCATION = os.getenv("GCP_LOCATION", "us-central1") # Mặc định lấy us-central1 nếu không set
 
-client = genai.Client(api_key=api_key_env)
-MODEL = 'gemini-flash-latest'
+if not PROJECT_ID:
+    print("[-] [FATAL ERROR] GCP_PROJECT_ID chưa được set trong biến môi trường của Render! API sẽ bị treo hoặc thất bại.", flush=True)
+
+# [THAY ĐỔI 2]: Khởi tạo Client dành riêng cho Vertex AI
+client = genai.Client(
+    vertexai=True, 
+    project=PROJECT_ID, 
+    location=LOCATION
+)
+
+# [THAY ĐỔI 3]: Vertex AI thường sử dụng phiên bản model cụ thể hoặc alias chuẩn. 
+# Khuyên dùng gemini-1.5-flash hoặc gemini-2.5-flash thay vì 'gemini-flash-latest' của AI Studio.
+MODEL = 'gemini-1.5-flash' 
 
 # Tách toàn bộ bộ quy tắc cố định sang SYSTEM_INSTRUCTION để tận dụng Automatic Prefix Caching của Gemini API
 SYSTEM_INSTRUCTION = """
@@ -59,10 +71,9 @@ VUI LÒNG TRẢ VỀ KẾT QUẢ ĐÚNG THEO ĐỊNH DẠNG JSON SAU (Không kè
 }
 """
 
-PROMPT_TEMPLATE = SYSTEM_INSTRUCTION  # Giữ alias phòng trường hợp import từ ngoài
+PROMPT_TEMPLATE = SYSTEM_INSTRUCTION
 
 # Pre-created Config (Cached tại bộ nhớ khi khởi tạo module):
-# Sử dụng response_schema để ép khuôn Gemini API xuất JSON chuẩn 100%, không bị lỗi cú pháp/thừa dấu nháy
 CACHED_CONFIG = types.GenerateContentConfig(
     system_instruction=SYSTEM_INSTRUCTION,
     response_mime_type="application/json",
@@ -70,12 +81,9 @@ CACHED_CONFIG = types.GenerateContentConfig(
     temperature=0.1
 )
 
-# Local Memory Cache: Lưu kết quả JSON đã xử lý theo (audio_size + transcript)
 LOCAL_RESPONSE_CACHE = {}
 
 def get_response(task_id, audio_bytes, transcript) -> AnnotationResponse:
-    # We keep the sync signature for backward compatibility or if needed elsewhere, 
-    # but we will actually create an async version for playwright_loop
     pass
 
 async def get_response_async(task_id, audio_bytes, transcript) -> AnnotationResponse:
@@ -87,22 +95,20 @@ async def get_response_async(task_id, audio_bytes, transcript) -> AnnotationResp
 
     audio_part = types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav")
     prompt = f'Hãy nghe file âm thanh đính kèm và rà soát đoạn transcript nháp sau đây:\n"{transcript}"'
-    print(f"-> [Gemini] Đang gửi yêu cầu xử lý tới model {MODEL}...", flush=True)
-    
+    print(f"-> [Vertex AI] Đang gửi yêu cầu xử lý tới model {MODEL}...", flush=True)
+
     try:
         max_retries = 4
         for attempt in range(max_retries):
             try:
-                import asyncio
                 # CHÚ Ý: Chạy bằng synchronous client bên trong to_thread để chống treo Event Loop!
-                # Thư viện google-genai bản aio đôi khi bị lỗi block socket khiến asyncio.wait_for bị liệt.
                 def sync_call():
                     return client.models.generate_content(
                         model=MODEL,
                         contents=[audio_part, prompt],
                         config=CACHED_CONFIG
                     )
-                    
+
                 response_gemini = await asyncio.wait_for(
                     asyncio.to_thread(sync_call),
                     timeout=20.0
@@ -112,17 +118,16 @@ async def get_response_async(task_id, audio_bytes, transcript) -> AnnotationResp
                 err_str = str(api_err)
                 is_overloaded = any(code in err_str for code in ["503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED", "timeout", "Connection", "TimeoutError"])
                 if is_overloaded or isinstance(api_err, asyncio.TimeoutError):
-                    wait_time = (2 ** attempt) * 3  # Thử lại sau 3s, 6s, 12s...
-                    print(f"[-] [Gemini] Server đang tải cao hoặc bận ({err_str[:60]}...). Tự động thử lại lần {attempt + 1}/{max_retries - 1} sau {wait_time}s...", flush=True)
-                    import asyncio
+                    wait_time = (2 ** attempt) * 3 
+                    print(f"[-] [Vertex AI] Server đang tải cao hoặc bận ({err_str[:60]}...). Tự động thử lại lần {attempt + 1}/{max_retries - 1} sau {wait_time}s...", flush=True)
                     await asyncio.sleep(wait_time)
                 else:
                     raise api_err
 
-        print(f"-> [Gemini] Nhận kết quả thành công từ AI!", flush=True)
+        print(f"-> [Vertex AI] Nhận kết quả thành công từ AI!", flush=True)
         text = response_gemini.text.strip()
-        
-        # Loại bỏ markdown code block nếu có
+
+        # Logic lọc và bóc tách JSON của bạn được giữ nguyên hoàn toàn
         if "```" in text:
             start = text.find("```")
             first_newline = text.find("\n", start)
@@ -130,8 +135,7 @@ async def get_response_async(task_id, audio_bytes, transcript) -> AnnotationResp
                 end = text.rfind("```")
                 if end > first_newline:
                     text = text[first_newline+1:end].strip()
-        
-        # Trích xuất chính xác đối tượng JSON đầu tiên hợp lệ để tránh lỗi Extra data
+
         start_brace = text.find("{")
         if start_brace != -1:
             try:
@@ -147,11 +151,11 @@ async def get_response_async(task_id, audio_bytes, transcript) -> AnnotationResp
                     end_brace = text.rfind("}")
                     if end_brace > start_brace:
                         text = text[start_brace:end_brace+1]
-                        
+
         try:
             json.loads(text)
         except Exception as e:
-            print(f"[-] [Gemini] Cảnh báo JSON trả về bị lỗi cú pháp ({e}). Tự động fallback để bảo vệ luồng trình duyệt...", flush=True)
+            print(f"[-] [Vertex AI] Cảnh báo JSON trả về bị lỗi cú pháp ({e}). Tự động fallback để bảo vệ luồng trình duyệt...", flush=True)
             fallback_obj = {
                 "transcript": transcript,
                 "gender": "Unknown",
@@ -160,14 +164,12 @@ async def get_response_async(task_id, audio_bytes, transcript) -> AnnotationResp
                 "error_alert": "AI trả về JSON không hợp lệ"
             }
             text = json.dumps(fallback_obj, ensure_ascii=False)
-                    
-        # Lưu vào Local Cache
+
         LOCAL_RESPONSE_CACHE[cache_key] = text
         print(text)
         return AnnotationResponse(**json.loads(text))
     except Exception as total_err:
-        # Bảo vệ tối đa: Nếu gọi API thất bại hết các lần thử lại hoặc gặp lỗi mạng nặng, trả về fallback an toàn
-        print(f"[-] [Gemini] Không thể lấy kết quả AI sau các lần thử lại ({total_err}). Tự động fallback để không gián đoạn Playwright...", flush=True)
+        print(f"[-] [Vertex AI] Không thể lấy kết quả AI sau các lần thử lại ({total_err}). Tự động fallback để không gián đoạn Playwright...", flush=True)
         fallback_obj = {
             "transcript": transcript,
             "gender": "Unknown",
