@@ -38,10 +38,6 @@ else:
     client = genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
 
 
-# [THAY ĐỔI 1]: Thay vì dùng API_KEY, Vertex AI dùng Project ID và Location
-PROJECT_ID = os.getenv("PROJECT_ID")
-LOCATION = os.getenv("GCP_LOCATION", "us-central1") # Mặc định lấy us-central1 nếu không set
-
 MODEL = 'gemini-3.1-flash-lite' 
 
 # Tách toàn bộ bộ quy tắc cố định sang SYSTEM_INSTRUCTION để tận dụng Automatic Prefix Caching của Gemini API
