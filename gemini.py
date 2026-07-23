@@ -142,6 +142,10 @@ async def get_response_async(task_id, audio_bytes, transcript) -> AnnotationResp
                     raise api_err
 
         print(f"-> [Vertex AI] Nhận kết quả thành công từ AI cho task {task_id}!", flush=True)
+        if hasattr(response_gemini, "usage_metadata") and response_gemini.usage_metadata:
+            usage = response_gemini.usage_metadata
+            print(f"-> [Token Usage] Prompt: {usage.prompt_token_count} | Output: {usage.candidates_token_count} | Total: {usage.total_token_count}", flush=True)
+            
         text = response_gemini.text.strip()
 
         # Loại bỏ markdown code block nếu model trả về thừa

@@ -353,8 +353,8 @@ async def api_polling_loop():
         return
         
     global global_task_state
-    prefetch_queue = asyncio.Queue(maxsize=20)
-    ready_queue = asyncio.Queue(maxsize=20)
+    prefetch_queue = asyncio.Queue(maxsize=50)
+    ready_queue = asyncio.Queue(maxsize=50)
     
     import os
     project_id = os.environ.get("PROJECT_ID", "213452")

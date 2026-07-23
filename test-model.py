@@ -1,6 +1,7 @@
 import os
 import json
-from google import genai
+import vertexai
+from vertexai.generative_models import GenerativeModel
 from google.oauth2 import service_account
 from dotenv import load_dotenv
 
@@ -25,9 +26,10 @@ if credentials_json:
     )
     
     print(f"[*] Đang khởi tạo Vertex AI client (project={GCP_PROJECT_ID}, location={LOCATION})...")
-    client = genai.Client(
-        vertexai=True, 
-        project=GCP_PROJECT_ID, 
+    
+    # Khởi tạo thư viện vertexai
+    vertexai.init(
+        project=GCP_PROJECT_ID,
         location=LOCATION,
         credentials=credentials
     )
@@ -62,11 +64,9 @@ if credentials_json:
         for model_name in models_to_test:
             print(f"[*] Đang thử kết nối model: {model_name}...", end=" ")
             try:
-                # Gửi 1 prompt cực nhỏ để test
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents="Hi",
-                )
+                # Gửi 1 prompt cực nhỏ để test bằng vertexai
+                model = GenerativeModel(model_name)
+                response = model.generate_content("Hi")
                 print(f"[OK] - Khả dụng")
                 available_models.append(model_name)
             except Exception as e:
