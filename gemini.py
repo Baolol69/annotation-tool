@@ -43,7 +43,7 @@ else:
     client = genai.Client(vertexai=True, project=GCP_PROJECT_ID, location=LOCATION)
 
 # --- 2. CẤU HÌNH MODEL VÀ PROMPT ---
-MODEL = 'gemini-3.5-flash-lite'
+MODEL = 'gemini-1.5-flash'
 
 # Tách toàn bộ bộ quy tắc cố định sang SYSTEM_INSTRUCTION để tận dụng Automatic Prefix Caching
 SYSTEM_INSTRUCTION = """
