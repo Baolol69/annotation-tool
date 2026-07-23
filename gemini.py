@@ -1,4 +1,5 @@
 from google import genai
+from google.oauth2 import service_account
 from google.genai import types
 import os
 import json
