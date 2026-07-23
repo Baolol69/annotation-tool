@@ -16,24 +16,39 @@ import time
 import numpy as np
 from gemini import get_response, AnnotationResponse
 from schemas import CurrentTask, SubmitTask, TaskState
+
+import json
+from google import genai
+from google.oauth2 import service_account
 from dotenv import load_dotenv
 
 load_dotenv()
 
 credentials_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+PROJECT_ID = os.getenv("PROJECT_ID")
+LOCATION = os.getenv("GCP_LOCATION", "us-central1")
 
 if credentials_json:
-    # Xóa ký tự nháy đơn thừa nếu có
     if credentials_json.startswith("'") and credentials_json.endswith("'"):
         credentials_json = credentials_json[1:-1]
-        
-    # Tạo file vật lý cho Google SDK đọc
-    with open("gcp_credentials.json", "w", encoding="utf-8") as f:
-        f.write(credentials_json)
     
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "gcp_credentials.json"
+    # 1. Tải trực tiếp thông tin từ chuỗi JSON và chỉ định rõ SCOPE bắt buộc cho Vertex AI
+    service_account_info = json.loads(credentials_json)
+    credentials = service_account.Credentials.from_service_account_info(
+        service_account_info,
+        scopes=["https://www.googleapis.com/auth/cloud-platform"]
+    )
+    
+    # 2. Truyền thẳng đối tượng credentials này vào client
+    client = genai.Client(
+        vertexai=True,
+        project=PROJECT_ID,
+        location=LOCATION,
+        credentials=credentials  # <--- Thêm tham số này để triệt tiêu lỗi invalid_scope
+    )
 else:
-    print("[-] [CẢNH BÁO] Không tìm thấy GOOGLE_APPLICATION_CREDENTIALS_JSON!")
+    print("[-] [FATAL ERROR] Thiếu biến môi trường GOOGLE_APPLICATION_CREDENTIALS_JSON!")
+
 
 EMAIL = os.getenv("EMAIL", "")
 PASSWORD = os.getenv("PASSWORD", "")
