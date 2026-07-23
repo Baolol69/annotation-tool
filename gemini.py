@@ -200,3 +200,46 @@ async def get_response_async(task_id, audio_bytes, transcript) -> AnnotationResp
             "error_alert": f"Lỗi kết nối AI: {str(total_err)[:50]}"
         }
         return AnnotationResponse(**fallback_obj)
+
+# --- 4. TEST SCRIPT (CHẠY ĐỘC LẬP) ---
+if __name__ == "__main__":
+    async def test_main():
+        print("="*60)
+        print("[*] ĐANG CHẠY TEST VERTEX AI (GEMINI)")
+        print(f"[*] Model cấu hình: {MODEL}")
+        print("="*60)
+        
+        # 1. Tạo một file audio giả (1 giây im lặng) để test kết nối
+        import io
+        import wave
+        
+        print("[1] Đang tạo audio giả (1 giây im lặng)...")
+        out_buffer = io.BytesIO()
+        with wave.open(out_buffer, 'wb') as wav_out:
+            wav_out.setnchannels(1)
+            wav_out.setsampwidth(2)
+            wav_out.setframerate(16000)
+            wav_out.writeframes(b'\x00\x00' * 16000)
+        dummy_audio = out_buffer.getvalue()
+        
+        # 2. Tạo một đoạn transcript nháp
+        transcript = "trận đấu này blv thấy quá hay"
+        print(f"[2] Transcript nháp đầu vào: '{transcript}'")
+        print("\n[3] Gửi yêu cầu lên Vertex AI...")
+        
+        # 3. Gọi hàm xử lý
+        try:
+            resp = await get_response_async("TEST_LOCAL_001", dummy_audio, transcript)
+            
+            print("\n" + "="*60)
+            print("[KẾT QUẢ TỪ AI]")
+            print(f"- Transcript: {resp.transcript}")
+            print(f"- Gender    : {resp.gender}")
+            print(f"- Topic     : {resp.topic}")
+            print(f"- MC        : {resp.mc}")
+            print(f"- Error/Alert: {resp.error_alert}")
+            print("="*60)
+        except Exception as e:
+            print(f"\n[-] [LỖI KHÔNG MONG MUỐN]: {e}")
+
+    asyncio.run(test_main())

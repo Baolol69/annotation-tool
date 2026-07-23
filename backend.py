@@ -155,6 +155,43 @@ async def init_session():
 
 async def pagination_loop(session: aiohttp.ClientSession, project_id: str, prefetch_queue: asyncio.Queue):
     current_page = 1
+    page_file = "current_page.txt"
+    
+    async def save_page(page):
+        if 'db_pool' in globals() and db_pool:
+            try:
+                async with db_pool.acquire() as conn:
+                    await conn.execute(
+                        "INSERT INTO app_state (key, value) VALUES ('current_page', $1) "
+                        "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+                        str(page)
+                    )
+            except Exception: pass
+        else:
+            try:
+                with open(page_file, "w") as f:
+                    f.write(str(page))
+            except Exception: pass
+
+    if 'db_pool' in globals() and db_pool:
+        try:
+            async with db_pool.acquire() as conn:
+                row = await conn.fetchrow("SELECT value FROM app_state WHERE key = 'current_page'")
+                if row and row['value'].isdigit():
+                    current_page = int(row['value'])
+                    print(f"[DEBUG-PAGINATION] Đã khôi phục tiến trình từ DB, tiếp tục quét từ trang: {current_page}", flush=True)
+        except Exception as e:
+            print(f"[ERROR] Khôi phục page từ DB lỗi: {e}")
+    elif os.path.exists(page_file):
+        try:
+            with open(page_file, "r") as f:
+                content = f.read().strip()
+                if content.isdigit():
+                    current_page = int(content)
+                    print(f"[DEBUG-PAGINATION] Đã khôi phục tiến trình từ file, tiếp tục quét từ trang: {current_page}", flush=True)
+        except Exception:
+            pass
+
     while True:
         url = f"{HUMANSIGNAL_BASE_URL}/api/tasks/?project={project_id}&page={current_page}&page_size=100"
         try:
@@ -166,6 +203,7 @@ async def pagination_loop(session: aiohttp.ClientSession, project_id: str, prefe
                         print(f"[DEBUG-PAGINATION] Hết task ở trang {current_page}. Đợi 10s rồi quét lại từ đầu.", flush=True)
                         await asyncio.sleep(10)
                         current_page = 1
+                        await save_page(current_page)
                         continue
                     
                     found_any = False
@@ -210,6 +248,7 @@ async def pagination_loop(session: aiohttp.ClientSession, project_id: str, prefe
                     if not found_any:
                         print(f"[DEBUG-PAGINATION] Trang {current_page} không có task nào mới, nhảy trang tiếp theo...", flush=True)
                     current_page += 1
+                    await save_page(current_page)
                 else:
                     print(f"[ERROR] Pagination lỗi {resp.status}: {await resp.text()}", flush=True)
                     await asyncio.sleep(5)
@@ -273,8 +312,15 @@ async def background_worker_loop(session: aiohttp.ClientSession, prefetch_queue:
                 from gemini import get_response_async
                 annotation_resp = await get_response_async(task_data.task_id, final_audio_bytes, task_data.prediction)
                 
-                # Lưu vào DB
-                if 'db_pool' in globals() and db_pool:
+                # Lưu vào DB (Chỉ lưu nếu KHÔNG có lỗi hệ thống từ AI)
+                is_ai_error = False
+                if annotation_resp.error_alert:
+                    err_msg = annotation_resp.error_alert.lower()
+                    if "lỗi kết nối ai" in err_msg or "json không hợp lệ" in err_msg:
+                        is_ai_error = True
+                        print(f"[DEBUG-WORKER] Phát hiện lỗi AI ('{annotation_resp.error_alert}'), BỎ QUA việc lưu vào DB để thử lại sau.", flush=True)
+                        
+                if not is_ai_error and 'db_pool' in globals() and db_pool:
                     try:
                         async with db_pool.acquire() as conn:
                             await conn.execute('''
@@ -469,9 +515,13 @@ async def lifespan(app: FastAPI):
                         error_alert TEXT,
                         status VARCHAR(20),
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
+                    );
+                    CREATE TABLE IF NOT EXISTS app_state (
+                        key VARCHAR(50) PRIMARY KEY,
+                        value TEXT
+                    );
                 ''')
-            print("[DEBUG] Khởi tạo bảng gemini_cache thành công!")
+            print("[DEBUG] Khởi tạo các bảng DB thành công!")
         except Exception as e:
             print(f"[ERROR] Lỗi kết nối CSDL: {e}")
             db_pool = None
