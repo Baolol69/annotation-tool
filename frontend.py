@@ -108,6 +108,16 @@ def build_ui():
         
         log_memory("FRONTEND: Người dùng bấm Submit")
         
+        # Dừng audio ngay lập tức trên UI trong lúc chờ gửi API
+        yield (
+            gr.skip(),
+            gr.Audio(value=None, autoplay=False),
+            gr.skip(),
+            gr.skip(),
+            gr.skip(),
+            gr.skip()
+        )
+        
         payload = {
             "transcript": transcript,
             "gender": gender,
@@ -130,6 +140,17 @@ def build_ui():
 
     def skip():
         global current_task_id
+        
+        # Dừng audio ngay lập tức
+        yield (
+            gr.skip(),
+            gr.Audio(value=None, autoplay=False),
+            gr.skip(),
+            gr.skip(),
+            gr.skip(),
+            gr.skip()
+        )
+        
         try:
             requests.post(f"{BACKEND_URL}/api/skip", timeout=5)
             current_task_id = None
