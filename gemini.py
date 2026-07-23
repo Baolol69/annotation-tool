@@ -11,22 +11,37 @@ from dotenv import load_dotenv
 from schemas import AnnotationResponse
 load_dotenv()
 
+# --- 1. XỬ LÝ CREDENTIALS TRỰC TIẾP TRONG MODULE GEMINI ---
+PROJECT_ID = os.getenv("PROJECT_ID")
+LOCATION = os.getenv("GCP_LOCATION", "us-central1")
+credentials_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+
+if credentials_json:
+    if credentials_json.startswith("'") and credentials_json.endswith("'"):
+        credentials_json = credentials_json[1:-1]
+        
+    service_account_info = json.loads(credentials_json)
+    credentials = service_account.Credentials.from_service_account_info(
+        service_account_info,
+        scopes=["https://www.googleapis.com/auth/cloud-platform"]
+    )
+    
+    client = genai.Client(
+        vertexai=True, 
+        project=PROJECT_ID, 
+        location=LOCATION,
+        credentials=credentials
+    )
+else:
+    print("[-] [FATAL ERROR] Thiếu biến môi trường GOOGLE_APPLICATION_CREDENTIALS_JSON trong gemini.py!", flush=True)
+    # Khởi tạo mặc định để tránh lỗi syntax nếu thiếu key, dù có thể sẽ lỗi khi chạy
+    client = genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
+
+
 # [THAY ĐỔI 1]: Thay vì dùng API_KEY, Vertex AI dùng Project ID và Location
 PROJECT_ID = os.getenv("PROJECT_ID")
 LOCATION = os.getenv("GCP_LOCATION", "us-central1") # Mặc định lấy us-central1 nếu không set
 
-if not PROJECT_ID:
-    print("[-] [FATAL ERROR] GCP_PROJECT_ID chưa được set trong biến môi trường của Render! API sẽ bị treo hoặc thất bại.", flush=True)
-
-# [THAY ĐỔI 2]: Khởi tạo Client dành riêng cho Vertex AI
-client = genai.Client(
-    vertexai=True, 
-    project=PROJECT_ID, 
-    location=LOCATION
-)
-
-# [THAY ĐỔI 3]: Vertex AI thường sử dụng phiên bản model cụ thể hoặc alias chuẩn. 
-# Khuyên dùng gemini-1.5-flash hoặc gemini-2.5-flash thay vì 'gemini-flash-latest' của AI Studio.
 MODEL = 'gemini-3.1-flash-lite' 
 
 # Tách toàn bộ bộ quy tắc cố định sang SYSTEM_INSTRUCTION để tận dụng Automatic Prefix Caching của Gemini API
