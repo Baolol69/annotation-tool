@@ -12,7 +12,7 @@ from schemas import AnnotationResponse
 load_dotenv()
 
 # [THAY ĐỔI 1]: Thay vì dùng API_KEY, Vertex AI dùng Project ID và Location
-PROJECT_ID = os.getenv("GCP_PROJECT_ID")
+PROJECT_ID = os.getenv("PROJECT_ID")
 LOCATION = os.getenv("GCP_LOCATION", "us-central1") # Mặc định lấy us-central1 nếu không set
 
 if not PROJECT_ID:
