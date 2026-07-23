@@ -20,6 +20,21 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+credentials_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+
+if credentials_json:
+    # Xóa ký tự nháy đơn thừa nếu có
+    if credentials_json.startswith("'") and credentials_json.endswith("'"):
+        credentials_json = credentials_json[1:-1]
+        
+    # Tạo file vật lý cho Google SDK đọc
+    with open("gcp_credentials.json", "w", encoding="utf-8") as f:
+        f.write(credentials_json)
+    
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "gcp_credentials.json"
+else:
+    print("[-] [CẢNH BÁO] Không tìm thấy GOOGLE_APPLICATION_CREDENTIALS_JSON!")
+
 EMAIL = os.getenv("EMAIL", "")
 PASSWORD = os.getenv("PASSWORD", "")
 PROJECT_ID=os.getenv("PROJECT_ID", 274318)
