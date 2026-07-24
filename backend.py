@@ -396,6 +396,14 @@ async def api_polling_loop():
                         return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
                     
                     new_result = copy.deepcopy(current_task.original_result)
+                    new_result.append({
+                            "value": {"choices": [current_task.region]}, 
+                            "id": generate_id(), 
+                            "from_name": "dialect", # Lưu ý chữ này phải khớp với Label Studio của bạn
+                            "to_name": "audio", 
+                            "type": "choices", 
+                            "origin": "manual"
+                        })
                     if data.transcript:
                         new_result.append({"value": {"text": [data.transcript]}, "id": generate_id(), "from_name": "transcript", "to_name": "audio", "type": "textarea", "origin": "manual"})
                     if data.gender:
