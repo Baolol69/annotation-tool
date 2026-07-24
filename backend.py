@@ -54,9 +54,6 @@ playwright_context = {}
 audio_cache = {}
 processed_tasks = set()
 
-
-
-
 def response_parser(response_body: dict) -> CurrentTask:
     task_id = str(response_body.get("id"))
     task_data = response_body.get("data", {})
@@ -100,8 +97,6 @@ def response_parser(response_body: dict) -> CurrentTask:
         original_result=original_result,
         task_info=task_data
     )
-
-
 
 import time
 import aiohttp
@@ -152,6 +147,56 @@ async def init_session():
             
         print(f"[ERROR] Đăng nhập thất bại. Cookies hiện tại: {cookie_dict}", flush=True)
         return cookie_dict
+
+async def preload_db_tasks(session: aiohttp.ClientSession, project_id: str, prefetch_queue: asyncio.Queue):
+    """
+    Hàm này quét các task đã 'ready' trong DB, lấy metadata từ API và nhét thẳng vào Queue trước.
+    """
+    if not ('db_pool' in globals() and db_pool):
+        return
+
+    print("[DEBUG-PRELOAD] Bắt đầu rà soát các task có sẵn trong database...", flush=True)
+    try:
+        async with db_pool.acquire() as conn:
+            # Lấy tất cả các task đã xử lý xong AI nhưng chưa nộp
+            records = await conn.fetch(
+                "SELECT * FROM gemini_cache WHERE project_id = $1 AND status = 'ready'", 
+                int(project_id)
+            )
+            
+            if not records:
+                print("[DEBUG-PRELOAD] Database trống, không có task sẵn sàng.", flush=True)
+                return
+
+            print(f"[DEBUG-PRELOAD] Tìm thấy {len(records)} task đã ready trong DB. Đang nạp vào Queue...", flush=True)
+            
+            for row in records:
+                task_id = str(row['task_id'])
+                # Gọi API lấy chi tiết của task gốc (để có link audio, region...)
+                url = f"{HUMANSIGNAL_BASE_URL}/api/tasks/{task_id}/"
+                
+                async with session.get(url, timeout=15) as resp:
+                    if resp.status == 200:
+                        task_raw = await resp.json()
+                        task_obj = response_parser(task_raw)
+                        
+                        from schemas import AnnotationResponse
+                        cached_resp = AnnotationResponse(
+                            transcript=row['transcript'],
+                            gender=row['gender'],
+                            topic=row['topic'],
+                            mc=row['mc'],
+                            error_alert=row['error_alert'] or ""
+                        )
+                        
+                        # Đẩy vào prefetch_queue giống như cách pagination_loop đang làm
+                        await prefetch_queue.put((task_obj, cached_resp))
+                        print(f"[DEBUG-PRELOAD] Đã khôi phục và đẩy task {task_id} vào Queue!", flush=True)
+                    else:
+                        print(f"[ERROR-PRELOAD] Lỗi tải metadata task {task_id} (HTTP {resp.status})", flush=True)
+                        
+    except Exception as e:
+        print(f"[ERROR-PRELOAD] Lỗi khi preload task từ DB: {e}", flush=True)
 
 async def pagination_loop(session: aiohttp.ClientSession, project_id: str, prefetch_queue: asyncio.Queue):
     current_page = 1
@@ -360,11 +405,23 @@ async def api_polling_loop():
     project_id = os.environ.get("PROJECT_ID", "213452")
     
     async with aiohttp.ClientSession(cookies=cookie_dict) as session:
-        # Chạy ngầm 2 luồng
-        asyncio.create_task(pagination_loop(session, project_id, prefetch_queue))
+        
+        # --- BƯỚC 1: ĐỊNH NGHĨA LUỒNG TÌM VIỆC (PRODUCER) ---
+        async def task_producer():
+            # Chạy nạp DB trước tiên
+            await preload_db_tasks(session, project_id, prefetch_queue)
+            # Nạp DB cạn rồi, giờ thì rảnh rang đi quét API
+            await pagination_loop(session, project_id, prefetch_queue)
+
+        # --- BƯỚC 2: KHỞI ĐỘNG CÁC LUỒNG CHẠY NGẦM (SONG SONG) ---
+        # 1. Luồng đi tìm việc (chạy cái hàm vừa định nghĩa ở trên)
+        asyncio.create_task(task_producer())
+        
+        # 2. Luồng công nhân (chờ sẵn, hễ có việc là làm)
         asyncio.create_task(background_worker_loop(session, prefetch_queue, ready_queue))
         
-        # Lệnh đầu tiên: bốc task cho UI
+        # --- BƯỚC 3: PHỤC VỤ UI NGAY LẬP TỨC (CONSUMER) ---
+        # Luồng chính đi thẳng xuống đây không bị chặn một giây nào!
         await action_queue.put(("load_next_task", None))
         
         current_task_start_time = time.time()
@@ -373,11 +430,14 @@ async def api_polling_loop():
             try:
                 action, data = await action_queue.get()
                 if action == "load_next_task":
-                    # Rút từ Ready Queue, nếu chưa có thì sẽ đợi (UI sẽ loading)
+                    # Lệnh này sẽ chờ rút bài từ ready_queue.
+                    # Ngay khi Công nhân làm xong bài đầu tiên từ DB, UI sẽ nhận được ngay!
                     task_data, final_audio_bytes, annotation_resp = await ready_queue.get()
                     
                     import os
                     current_port = os.environ.get("PORT", "8000")
+                    # ... (Phần còn lại của code giữ nguyên) ...
+                    
                     task_data.audio_data = f"http://127.0.0.1:{current_port}/api/audio/{task_data.task_id}"
                     
                     global_task_state.task = task_data
@@ -396,6 +456,14 @@ async def api_polling_loop():
                         return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
                     
                     new_result = copy.deepcopy(current_task.original_result)
+                    new_result.append({
+                            "value": {"choices": [current_task.region]}, 
+                            "id": generate_id(), 
+                            "from_name": "dialect", # Lưu ý chữ này phải khớp với Label Studio của bạn
+                            "to_name": "audio", 
+                            "type": "choices", 
+                            "origin": "manual"
+                        })
                     if data.transcript:
                         new_result.append({"value": {"text": [data.transcript]}, "id": generate_id(), "from_name": "transcript", "to_name": "audio", "type": "textarea", "origin": "manual"})
                     if data.gender:
