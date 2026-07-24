@@ -5,3 +5,5 @@ __pycache__/
 .gradio/
 current_audio.wav
 venv/
+annotation_v2/
+test/
