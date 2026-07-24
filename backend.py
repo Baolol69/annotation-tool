@@ -405,15 +405,18 @@ async def api_polling_loop():
     project_id = os.environ.get("PROJECT_ID", "213452")
     
     async with aiohttp.ClientSession(cookies=cookie_dict) as session:
-        # 1. CHẠY HÀM NẠP TỪ DATABASE TRƯỚC TIÊN (Chặn luồng chờ đến khi nạp xong)
+        # 1. Bật luồng công nhân lên trước để túc trực xử lý queue
+        asyncio.create_task(background_worker_loop(session, prefetch_queue, ready_queue))
+        
+        # 2. Bắt đầu nạp DB. Nạp được bài nào, công nhân ở trên sẽ "vồ" lấy xử lý ngay
         await preload_db_tasks(session, project_id, prefetch_queue)
         
-        # 2. SAU KHI NẠP DATABASE XONG, MỚI THẢ XÍCH CHO CÁC VÒNG LẶP CHẠY NGẦM
+        # 3. Nạp xong DB mới cho phép quét API mới để tránh trùng lặp
         asyncio.create_task(pagination_loop(session, project_id, prefetch_queue))
-        asyncio.create_task(background_worker_loop(session, prefetch_queue, ready_queue))
         
         # Lệnh đầu tiên: bốc task cho UI
         await action_queue.put(("load_next_task", None))
+
         
         current_task_start_time = time.time()
         
