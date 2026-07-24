@@ -54,9 +54,6 @@ playwright_context = {}
 audio_cache = {}
 processed_tasks = set()
 
-
-
-
 def response_parser(response_body: dict) -> CurrentTask:
     task_id = str(response_body.get("id"))
     task_data = response_body.get("data", {})
@@ -100,8 +97,6 @@ def response_parser(response_body: dict) -> CurrentTask:
         original_result=original_result,
         task_info=task_data
     )
-
-
 
 import time
 import aiohttp
@@ -152,6 +147,56 @@ async def init_session():
             
         print(f"[ERROR] Đăng nhập thất bại. Cookies hiện tại: {cookie_dict}", flush=True)
         return cookie_dict
+
+async def preload_db_tasks(session: aiohttp.ClientSession, project_id: str, prefetch_queue: asyncio.Queue):
+    """
+    Hàm này quét các task đã 'ready' trong DB, lấy metadata từ API và nhét thẳng vào Queue trước.
+    """
+    if not ('db_pool' in globals() and db_pool):
+        return
+
+    print("[DEBUG-PRELOAD] Bắt đầu rà soát các task có sẵn trong database...", flush=True)
+    try:
+        async with db_pool.acquire() as conn:
+            # Lấy tất cả các task đã xử lý xong AI nhưng chưa nộp
+            records = await conn.fetch(
+                "SELECT * FROM gemini_cache WHERE project_id = $1 AND status = 'ready'", 
+                int(project_id)
+            )
+            
+            if not records:
+                print("[DEBUG-PRELOAD] Database trống, không có task sẵn sàng.", flush=True)
+                return
+
+            print(f"[DEBUG-PRELOAD] Tìm thấy {len(records)} task đã ready trong DB. Đang nạp vào Queue...", flush=True)
+            
+            for row in records:
+                task_id = str(row['task_id'])
+                # Gọi API lấy chi tiết của task gốc (để có link audio, region...)
+                url = f"{HUMANSIGNAL_BASE_URL}/api/tasks/{task_id}/"
+                
+                async with session.get(url, timeout=15) as resp:
+                    if resp.status == 200:
+                        task_raw = await resp.json()
+                        task_obj = response_parser(task_raw)
+                        
+                        from schemas import AnnotationResponse
+                        cached_resp = AnnotationResponse(
+                            transcript=row['transcript'],
+                            gender=row['gender'],
+                            topic=row['topic'],
+                            mc=row['mc'],
+                            error_alert=row['error_alert'] or ""
+                        )
+                        
+                        # Đẩy vào prefetch_queue giống như cách pagination_loop đang làm
+                        await prefetch_queue.put((task_obj, cached_resp))
+                        print(f"[DEBUG-PRELOAD] Đã khôi phục và đẩy task {task_id} vào Queue!", flush=True)
+                    else:
+                        print(f"[ERROR-PRELOAD] Lỗi tải metadata task {task_id} (HTTP {resp.status})", flush=True)
+                        
+    except Exception as e:
+        print(f"[ERROR-PRELOAD] Lỗi khi preload task từ DB: {e}", flush=True)
 
 async def pagination_loop(session: aiohttp.ClientSession, project_id: str, prefetch_queue: asyncio.Queue):
     current_page = 1
@@ -360,7 +405,10 @@ async def api_polling_loop():
     project_id = os.environ.get("PROJECT_ID", "213452")
     
     async with aiohttp.ClientSession(cookies=cookie_dict) as session:
-        # Chạy ngầm 2 luồng
+        # 1. CHẠY HÀM NẠP TỪ DATABASE TRƯỚC TIÊN (Chặn luồng chờ đến khi nạp xong)
+        await preload_db_tasks(session, project_id, prefetch_queue)
+        
+        # 2. SAU KHI NẠP DATABASE XONG, MỚI THẢ XÍCH CHO CÁC VÒNG LẶP CHẠY NGẦM
         asyncio.create_task(pagination_loop(session, project_id, prefetch_queue))
         asyncio.create_task(background_worker_loop(session, prefetch_queue, ready_queue))
         
