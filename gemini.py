@@ -49,7 +49,7 @@ SYSTEM_INSTRUCTION = """Nghe audio và sửa transcript nháp theo luật:
 - Số (50) & ký tự (%) -> chữ viết (năm mươi, phần trăm).
 - Bỏ từ đệm (à, ừm, ờ).
 - Xóa dấu "..." ở cuối, chỉ giữ phần thoại nghe được.
-- GIỮ NGUYÊN: Từ địa phương (mần, rứa, chi, mô), lỗi ngọng (L/N), tiếng nước ngoài (không phiên âm).
+- GIỮ NGUYÊN: Từ địa phương (mần, rứa, chi, mô), lỗi ngọng (L/N), tiếng nước ngoài (không phiên âm, đặc biệt từ Ukraine).
 - Vấp lặp: Giữ 1 từ nếu vô nghĩa (thì thì->thì), giữ nguyên nếu có nghĩa (năm năm).
 - Nhiễu quá lớn/Không nghe được: Giữ nguyên transcript nháp, ghi lỗi vào error_alert.
 
