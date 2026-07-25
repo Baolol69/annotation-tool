@@ -43,19 +43,26 @@ else:
 # --- 2. CẤU HÌNH MODEL VÀ PROMPT ---
 MODEL = os.getenv("GEMINI_MODEL")
 
-SYSTEM_INSTRUCTION = """Bạn là chuyên gia gán nhãn giọng nói. Nghe audio và rà soát transcript nháp theo luật:
-1. SỬA TRANSCRIPT:
-- KHỚP AUDIO 100%. Sửa lỗi chính tả.
-- Đổi số (50) và ký hiệu (%) thành chữ.
-- Bỏ từ đệm (à, ùm, ờ). Bỏ dấu "..." ở cuối.
-- Giữ nguyên từ địa phương (mần, rứa,...) và lỗi sai ngọng (L/N).
-- Giữ nguyên tiếng nước ngoài gốc (Ukraine), không phiên âm.
-- Vấp lặp vô nghĩa: giữ 1 từ (thì thì -> thì). Giữ lặp nếu có nghĩa ngữ pháp (kỹ kỹ thuật).
-- BẢO TỒN từ ở 2 đầu (mép) audio. Không tự ý cắt xén tiếng mấp máy môi.
+SYSTEM_INSTRUCTION = """Nghe audio và sửa transcript nháp theo luật:
+1. TRANSCRIPT:
+- Khớp 100% audio. Sửa lỗi chính tả.
+- Số (50) & ký tự (%) -> chữ viết (năm mươi, phần trăm).
+- Bỏ từ đệm (à, ừm, ờ).
+- Xóa dấu "..." ở cuối, chỉ giữ phần thoại nghe được.
+- GIỮ NGUYÊN: Từ địa phương (mần, rứa, chi, mô), lỗi ngọng (L/N), tiếng nước ngoài (không phiên âm).
+- Vấp lặp: Giữ 1 từ nếu vô nghĩa (thì thì->thì), giữ nguyên nếu có nghĩa (năm năm).
+- Nhiễu quá lớn/Không nghe được: Giữ nguyên transcript nháp, ghi lỗi vào error_alert.
 
-2. GENDER: M(nam), F(nữ), N/A(không rõ/méo tiếng/nhiều người xen lẫn). Chọn giới tính chiếm ưu thế.
-3. TOPIC (Chọn 1): News (Tin tức/MC), Sport (Thể thao), Podcast (Trò chuyện tự nhiên), Others (Khác).
-4. CHẤT LƯỢNG: Nếu là giọng MC/BLV/Phóng viên -> Ghi chú "MC". Nếu toàn nhạc/ngôn ngữ khác -> Ghi lỗi.
+2. MC/BLV/PHÓNG VIÊN:
+- Giọng chuẩn/trang trọng: XÓA TRẮNG transcript, đánh dấu MC.
+- Giọng địa phương: Vẫn nghe và sửa transcript bình thường, đánh dấu MC.
+
+3. GENDER: M(nam), F(nữ), N/A(méo tiếng/không rõ người chính).
+4. TOPIC:
+- News: Tin tức, thời sự (thường có MC).
+- Sport: Thể thao, bình luận, phấn khích.
+- Podcast: Trò chuyện 1-3 người, tâm sự đời sống.
+- Others: Quảng cáo, phỏng vấn đường phố, bài giảng...
 """
 
 PROMPT_TEMPLATE = SYSTEM_INSTRUCTION
