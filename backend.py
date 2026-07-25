@@ -52,8 +52,8 @@ action_queue = None  # Sẽ khởi tạo bên trong event loop
 ready_queue = None
 prefetch_queue = None
 playwright_context = {}
-audio_cache = {}
 processed_tasks = set()
+global_cookie_dict = {}
 
 def response_parser(response_body: dict) -> CurrentTask:
     task_id = str(response_body.get("id"))
@@ -394,6 +394,8 @@ async def api_polling_loop():
     cookie_dict = await init_session()
     if not cookie_dict:
         return
+    global global_cookie_dict
+    global_cookie_dict = cookie_dict
         
     global global_task_state, prefetch_queue, ready_queue
     prefetch_queue = asyncio.Queue(maxsize=50)
@@ -436,11 +438,10 @@ async def api_polling_loop():
                     current_port = os.environ.get("PORT", "8000")
                     # ... (Phần còn lại của code giữ nguyên) ...
                     
-                    task_data.audio_data = f"http://127.0.0.1:{current_port}/api/audio/{task_data.task_id}"
+                    task_data.audio_data = f"http://127.0.0.1:{current_port}/api/proxy_audio?path={task_data.audio_url_path}"
                     
                     global_task_state.task = task_data
                     global_task_state.gemini_response = annotation_resp
-                    audio_cache[task_data.task_id] = final_audio_bytes
                     current_task_start_time = time.time()
                     
                     # Báo hiệu UI cập nhật (chỉ cần YIELD 1 lần)
@@ -449,7 +450,6 @@ async def api_polling_loop():
                 elif action == "submit":
                     print(f"[DEBUG] Gửi lệnh Submit ngầm...", flush=True)
                     current_task = global_task_state.task
-                    audio_cache.pop(current_task.task_id, None)
                     
                     def generate_id(length=10):
                         return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
@@ -512,7 +512,6 @@ async def api_polling_loop():
                 elif action == "skip":
                     print(f"[DEBUG] Gửi lệnh Skip ngầm...", flush=True)
                     current_task = global_task_state.task
-                    audio_cache.pop(current_task.task_id, None)
                     real_lead_time = time.time() - current_task_start_time
                     base_time = max(real_lead_time, 10.0)
                     lead_time_val = round(base_time + random.uniform(1.5, 20.5), 3)
@@ -620,11 +619,16 @@ async def get_task(wait_gemini: bool = False):
         await task_received_event.wait()
     return global_task_state
 
-@app.get("/api/audio/{task_id}")
-async def get_audio(task_id: str):
-    if task_id in audio_cache:
-        return Response(content=audio_cache[task_id], media_type="audio/wav")
-    raise HTTPException(status_code=404)
+@app.get("/api/proxy_audio")
+async def proxy_audio(path: str):
+    import aiohttp
+    url = path
+    async with aiohttp.ClientSession(cookies=global_cookie_dict) as session:
+        async with session.get(url) as resp:
+            if resp.status == 200:
+                content = await resp.read()
+                return Response(content=content, media_type="audio/wav")
+            raise HTTPException(status_code=resp.status)
 
 @app.get("/api/queue")
 async def get_queue_size():

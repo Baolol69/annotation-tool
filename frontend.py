@@ -45,32 +45,10 @@ def wait_for_next_task():
                 data = resp.json()
                 if data.get("task"):
                     task_data = data["task"]
-                    audio_url = task_data["audio_data"]
-                    try:
-                        print(f"[FRONTEND] Bắt đầu tải audio từ {audio_url}...", flush=True)
-                        audio_resp = requests.get(audio_url, timeout=5)
-                        audio_bytes = audio_resp.content
-                        import wave, io, numpy as np
-                        with wave.open(io.BytesIO(audio_bytes), 'rb') as wf:
-                            sr = wf.getframerate()
-                            n_channels = wf.getnchannels()
-                            sampwidth = wf.getsampwidth()
-                            frames = wf.readframes(wf.getnframes())
-                            dtype = np.int16 if sampwidth == 2 else np.int8
-                            audio_arr = np.frombuffer(frames, dtype=dtype)
-                            if n_channels == 2:
-                                audio_arr = audio_arr.reshape(-1, 2)
-                        audio_filepath = (sr, audio_arr)
-                    except Exception as e:
-                        print(f"[ERROR] Lỗi parse audio: {e}. Fallback sử dụng tempfile.", flush=True)
-                        try:
-                            import tempfile
-                            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_audio:
-                                tmp_audio.write(audio_bytes)
-                                audio_filepath = tmp_audio.name
-                        except Exception as inner_e:
-                            print(f"[ERROR] Fallback tempfile thất bại: {inner_e}", flush=True)
-                            audio_filepath = None
+                    audio_path = task_data.get("audio_url_path", "")
+                    import urllib.parse
+                    encoded_path = urllib.parse.quote(audio_path, safe='')
+                    audio_html = f'<audio controls autoplay src="/api/proxy_audio?path={encoded_path}" style="width: 100%; border-radius: 8px; margin-bottom: 10px;"></audio>'
 
                     log_memory("FRONTEND: Giao diện vừa tải xong Audio")
 
@@ -96,7 +74,7 @@ def wait_for_next_task():
                     print(f"[FRONTEND] YIELD: Trả Audio và AI về giao diện ngay lập tức...", flush=True)
                     yield (
                         info_text,
-                        gr.Audio(value=audio_filepath, autoplay=True),
+                        audio_html,
                         gemini_resp.get("transcript", ""),
                         task_data["region"],
                         gemini_resp.get("gender", "N/A"),
@@ -111,16 +89,6 @@ def wait_for_next_task():
             print(f"[ERROR] Lỗi khi poll /api/task: {e}", flush=True)
         time.sleep(1)
 
-def fetch_queue_size():
-    try:
-        resp = requests.get(f"{BACKEND_URL}/api/queue", timeout=2)
-        if resp.status_code == 200:
-            size = resp.json().get("queue_size", 0)
-            return f"### 📥 Task đang chờ trong Queue: {size}"
-    except Exception:
-        pass
-    return "### 📥 Task đang chờ trong Queue: ..."
-
 def build_ui():
     def submit(transcript:str, dialect:str, gender:str, topic:str, audio_issues:List[str]):
         global current_task_id
@@ -130,7 +98,7 @@ def build_ui():
         # Dừng audio ngay lập tức trên UI trong lúc chờ gửi API và vô hiệu hoá nút bấm
         yield (
             gr.skip(),
-            gr.Audio(value=None, autoplay=False),
+            "",
             gr.skip(),
             gr.skip(),
             gr.skip(),
@@ -165,7 +133,7 @@ def build_ui():
         # Dừng audio ngay lập tức và vô hiệu hoá nút bấm
         yield (
             gr.skip(),
-            gr.Audio(value=None, autoplay=False),
+            "",
             gr.skip(),
             gr.skip(),
             gr.skip(),
@@ -188,8 +156,8 @@ def build_ui():
         gr.Markdown("# 🚀 PHIÊN BẢN ĐÃ CẬP NHẬT (KẾT NỐI CHỦ ĐỘNG)")
         with gr.Row():
             metadata_view = gr.Markdown("### 📄 Đang chờ dữ liệu...")
-            queue_view = gr.Markdown("### 📥 Task đang chờ trong Queue: 0")
-        audio_player = gr.Audio(label="Audio Player", interactive=False, autoplay=True)
+            queue_view = gr.Markdown("### 📥 Task đang chờ trong Queue: 0", elem_id="queue_view_md")
+        audio_player = gr.HTML(value="")
 
         transcript = gr.Textbox(
             label="Transcript", 
@@ -217,16 +185,25 @@ def build_ui():
         connect_button = gr.Button("🔴 BẤM VÀO ĐÂY ĐỂ BẮT ĐẦU TẢI TASK", variant="primary")
         connect_button.click(fn=wait_for_next_task, inputs=None, outputs=outputs_list)
         
-        # Cập nhật queue liên tục mỗi 2 giây bằng JavaScript
-        refresh_queue_btn = gr.Button("Refresh Queue", visible=False, elem_id="refresh_queue_btn")
-        refresh_queue_btn.click(fn=fetch_queue_size, inputs=None, outputs=queue_view)
-        
+        # Cập nhật queue liên tục bằng JavaScript thuần (rất nhẹ, tốn ít băng thông)
         poll_js = """
         function() {
             setInterval(function() {
-                var btn = document.querySelector('#refresh_queue_btn');
-                if (btn) btn.click();
-            }, 2000);
+                fetch('/api/queue')
+                    .then(response => response.json())
+                    .then(data => {
+                        var el = document.querySelector('#queue_view_md');
+                        if (el) {
+                            var h3 = el.querySelector('h3');
+                            if (h3) {
+                                h3.innerText = '📥 Task đang chờ trong Queue: ' + data.queue_size;
+                            } else {
+                                el.innerHTML = '<h3 dir="auto">📥 Task đang chờ trong Queue: ' + data.queue_size + '</h3>';
+                            }
+                        }
+                    })
+                    .catch(e => console.error(e));
+            }, 5000); // Tăng lên 5s để tiết kiệm thêm băng thông
         }
         """
         demo.load(None, None, None, js=poll_js)
