@@ -47,9 +47,10 @@ def log_memory(stage: str):
     except Exception:
         pass
 
-# Global state
 global_task_state = TaskState()
 action_queue = None  # Sẽ khởi tạo bên trong event loop
+ready_queue = None
+prefetch_queue = None
 playwright_context = {}
 audio_cache = {}
 processed_tasks = set()
@@ -254,11 +255,8 @@ async def pagination_loop(session: aiohttp.ClientSession, project_id: str, prefe
                     found_any = False
                     for t in tasks:
                         # Kiểm tra task chưa làm một cách triệt để
-                        has_annotations = len(t.get("annotations", [])) > 0
-                        has_drafts = len(t.get("drafts", [])) > 0
-                        is_labeled = t.get("is_labeled", False)
-                        
-                        if not is_labeled and not has_annotations and not has_drafts:
+                        annotated=  t['total_annotations']>0 or t['cancelled_annotations']>0
+                        if not annotated:
                             task_obj = response_parser(t)
                             
                             cached_task = None
@@ -397,7 +395,7 @@ async def api_polling_loop():
     if not cookie_dict:
         return
         
-    global global_task_state
+    global global_task_state, prefetch_queue, ready_queue
     prefetch_queue = asyncio.Queue(maxsize=50)
     ready_queue = asyncio.Queue(maxsize=50)
     
@@ -451,6 +449,7 @@ async def api_polling_loop():
                 elif action == "submit":
                     print(f"[DEBUG] Gửi lệnh Submit ngầm...", flush=True)
                     current_task = global_task_state.task
+                    audio_cache.pop(current_task.task_id, None)
                     
                     def generate_id(length=10):
                         return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
@@ -473,7 +472,9 @@ async def api_polling_loop():
                     if data.audio_issues:
                         new_result.append({"value": {"choices": data.audio_issues}, "id": generate_id(), "from_name": "audio_issues", "to_name": "audio", "type": "choices", "origin": "manual"})
 
-                    lead_time_val = random.random()*2+10.6
+                    real_lead_time = time.time() - current_task_start_time
+                    base_time = max(real_lead_time, 10.0)
+                    lead_time_val = round(base_time + random.uniform(1.5, 20.5), 3)
                     payload = {
                         "lead_time": lead_time_val,
                         "result": new_result,
@@ -511,7 +512,10 @@ async def api_polling_loop():
                 elif action == "skip":
                     print(f"[DEBUG] Gửi lệnh Skip ngầm...", flush=True)
                     current_task = global_task_state.task
-                    lead_time_val = random.random()*2+10.6
+                    audio_cache.pop(current_task.task_id, None)
+                    real_lead_time = time.time() - current_task_start_time
+                    base_time = max(real_lead_time, 10.0)
+                    lead_time_val = round(base_time + random.uniform(1.5, 20.5), 3)
                     payload = {
                         "lead_time": lead_time_val,
                         "result": [],
@@ -621,6 +625,12 @@ async def get_audio(task_id: str):
     if task_id in audio_cache:
         return Response(content=audio_cache[task_id], media_type="audio/wav")
     raise HTTPException(status_code=404)
+
+@app.get("/api/queue")
+async def get_queue_size():
+    if ready_queue:
+        return {"queue_size": ready_queue.qsize()}
+    return {"queue_size": 0}
 
 @app.post("/api/submit")
 async def submit_task(task: SubmitTask):

@@ -62,8 +62,15 @@ def wait_for_next_task():
                                 audio_arr = audio_arr.reshape(-1, 2)
                         audio_filepath = (sr, audio_arr)
                     except Exception as e:
-                        print(f"[ERROR] Lỗi parse audio: {e}", flush=True)
-                        audio_filepath = None
+                        print(f"[ERROR] Lỗi parse audio: {e}. Fallback sử dụng tempfile.", flush=True)
+                        try:
+                            import tempfile
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_audio:
+                                tmp_audio.write(audio_bytes)
+                                audio_filepath = tmp_audio.name
+                        except Exception as inner_e:
+                            print(f"[ERROR] Fallback tempfile thất bại: {inner_e}", flush=True)
+                            audio_filepath = None
 
                     log_memory("FRONTEND: Giao diện vừa tải xong Audio")
 
@@ -81,7 +88,7 @@ def wait_for_next_task():
                     except Exception:
                         ram_str = ""
                         
-                    info_text = f"### 📄 File: {ref_id} | 📍 Tỉnh: {province} | ⏱️ {duration}s{ram_str}"
+                    info_text = f"### 📄 File: {ref_id} | 🆔 Task ID: {task_data.get('task_id', 'N/A')} | 📍 Tỉnh: {province} | ⏱️ {duration}s{ram_str}"
 
                     gemini_resp = data.get("gemini_response") or {}
                     
@@ -93,7 +100,9 @@ def wait_for_next_task():
                         gemini_resp.get("transcript", ""),
                         task_data["region"],
                         gemini_resp.get("gender", "N/A"),
-                        gemini_resp.get("topic", "Others")
+                        gemini_resp.get("topic", "Others"),
+                        gr.update(interactive=True),
+                        gr.update(interactive=True)
                     )
                     break
         except requests.exceptions.ReadTimeout:
@@ -102,20 +111,32 @@ def wait_for_next_task():
             print(f"[ERROR] Lỗi khi poll /api/task: {e}", flush=True)
         time.sleep(1)
 
+def fetch_queue_size():
+    try:
+        resp = requests.get(f"{BACKEND_URL}/api/queue", timeout=2)
+        if resp.status_code == 200:
+            size = resp.json().get("queue_size", 0)
+            return f"### 📥 Task đang chờ trong Queue: {size}"
+    except Exception:
+        pass
+    return "### 📥 Task đang chờ trong Queue: ..."
+
 def build_ui():
     def submit(transcript:str, dialect:str, gender:str, topic:str, audio_issues:List[str]):
         global current_task_id
         
         log_memory("FRONTEND: Người dùng bấm Submit")
         
-        # Dừng audio ngay lập tức trên UI trong lúc chờ gửi API
+        # Dừng audio ngay lập tức trên UI trong lúc chờ gửi API và vô hiệu hoá nút bấm
         yield (
             gr.skip(),
             gr.Audio(value=None, autoplay=False),
             gr.skip(),
             gr.skip(),
             gr.skip(),
-            gr.skip()
+            gr.skip(),
+            gr.update(interactive=False),
+            gr.update(interactive=False)
         )
         
         payload = {
@@ -132,7 +153,7 @@ def build_ui():
             current_task_id = None # Reset so we wait for the next one
         except Exception as e:
             print(f"[ERROR] Submit failed: {e}", flush=True)
-            yield gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip()
+            yield gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.update(interactive=True), gr.update(interactive=True)
             return
         
         print(f"[FRONTEND] Bắt đầu đợi task tiếp theo...", flush=True)
@@ -141,14 +162,16 @@ def build_ui():
     def skip():
         global current_task_id
         
-        # Dừng audio ngay lập tức
+        # Dừng audio ngay lập tức và vô hiệu hoá nút bấm
         yield (
             gr.skip(),
             gr.Audio(value=None, autoplay=False),
             gr.skip(),
             gr.skip(),
             gr.skip(),
-            gr.skip()
+            gr.skip(),
+            gr.update(interactive=False),
+            gr.update(interactive=False)
         )
         
         try:
@@ -156,14 +179,16 @@ def build_ui():
             current_task_id = None
         except Exception as e:
             print(f"[ERROR] Skip failed: {e}")
-            yield gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip()
+            yield gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.update(interactive=True), gr.update(interactive=True)
             return
             
         yield from wait_for_next_task()
 
-    with gr.Blocks() as demo:
+    with gr.Blocks(theme=gr.themes.Soft()) as demo:
         gr.Markdown("# 🚀 PHIÊN BẢN ĐÃ CẬP NHẬT (KẾT NỐI CHỦ ĐỘNG)")
-        metadata_view = gr.Markdown("### 📄 Đang chờ dữ liệu...")
+        with gr.Row():
+            metadata_view = gr.Markdown("### 📄 Đang chờ dữ liệu...")
+            queue_view = gr.Markdown("### 📥 Task đang chờ trong Queue: 0")
         audio_player = gr.Audio(label="Audio Player", interactive=False, autoplay=True)
 
         transcript = gr.Textbox(
@@ -186,11 +211,25 @@ def build_ui():
         submit_button = gr.Button("Submit", variant="primary")
         skip_button = gr.Button("Skip", variant="primary")
 
-        outputs_list = [metadata_view, audio_player, transcript, dialect, gender, topic]
+        outputs_list = [metadata_view, audio_player, transcript, dialect, gender, topic, submit_button, skip_button]
 
         # Trigger on load (Replaced with a manual button to prevent infinite loading on startup)
         connect_button = gr.Button("🔴 BẤM VÀO ĐÂY ĐỂ BẮT ĐẦU TẢI TASK", variant="primary")
         connect_button.click(fn=wait_for_next_task, inputs=None, outputs=outputs_list)
+        
+        # Cập nhật queue liên tục mỗi 2 giây bằng JavaScript
+        refresh_queue_btn = gr.Button("Refresh Queue", visible=False, elem_id="refresh_queue_btn")
+        refresh_queue_btn.click(fn=fetch_queue_size, inputs=None, outputs=queue_view)
+        
+        poll_js = """
+        function() {
+            setInterval(function() {
+                var btn = document.querySelector('#refresh_queue_btn');
+                if (btn) btn.click();
+            }, 2000);
+        }
+        """
+        demo.load(None, None, None, js=poll_js)
         
         # Trigger on click
         submit_button.click(fn=submit, inputs=[transcript, dialect, gender, topic, quality_issues], outputs=outputs_list)
@@ -200,5 +239,5 @@ def build_ui():
 
 if __name__ == "__main__":
     demo = build_ui()
-    demo.launch(theme=gr.themes.Soft(), share=True, server_port=7861)
+    demo.launch(share=True, server_port=7861)
  

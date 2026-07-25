@@ -38,9 +38,7 @@ if credentials_json:
         credentials=credentials
     )
 else:
-    print("[-] [FATAL ERROR] Thiếu biến môi trường GOOGLE_APPLICATION_CREDENTIALS_JSON trong gemini.py!", flush=True)
-    # Khởi tạo mặc định để tránh lỗi syntax, dù có thể sẽ lỗi 401/403 khi chạy thực tế
-    client = genai.Client(vertexai=True, project=GCP_PROJECT_ID, location=LOCATION)
+    raise RuntimeError("[-] [FATAL ERROR] Thiếu biến môi trường GOOGLE_APPLICATION_CREDENTIALS_JSON trong .env!")
 
 # --- 2. CẤU HÌNH MODEL VÀ PROMPT ---
 MODEL = os.getenv("GEMINI_MODEL")
@@ -55,7 +53,7 @@ Bạn là một chuyên gia gán nhãn và kiểm định dữ liệu giọng n�
 - Bỏ từ đệm: Không ghi vào transcript các tiếng ngắt câu, ậm ừ như “à, ùm, ờ, ...”.
 - Xóa dấu cắt câu: Nếu cuối đoạn có dấu 3 chấm "..." do bị cắt ngang, hãy xóa phần thừa đó đi và chỉ giữ lại đúng phần thoại nghe được.
 - Từ địa phương & Sai ngọng: Tuyệt đối giữ nguyên các từ địa phương (như mần, chỉ, rứa, mô, ta, mi) mà không dịch nghĩa. Nếu người nói phát âm nhầm lẫn giữa “L” và “N”, phải giữ nguyên cách phát âm đó.
-- Từ nước ngoài: Giữ nguyên bản gốc của từ tiếng Anh/nước ngoài, không được viết thành phiên âm tiếng Việt.
+- Từ nước ngoài: Giữ nguyên bản gốc của từ tiếng Anh/nước ngoài, không được viết thành phiên âm tiếng Việt (Ví dụ: viết Ukraine, không được viết Ukraina).
 - Nói lặp từ do vấp: Nếu người nói bị vấp, lặp lại một từ vô nghĩa (ví dụ: "thì thì thì...") thì chỉ ghi nhận 1 từ ("thì"). Chú ý phân biệt và giữ nguyên nếu việc lặp từ có ý nghĩa ngữ pháp hoặc cấu trúc câu (ví dụ: "chuẩn bị kỹ kỹ thuật...").
 - BẢO TỒN TỪ Ở MÉP CÂU: Nếu bản nháp (prediction) dự đoán được các từ ở phần đầu hoặc phần đuôi của audio, hãy đặc biệt chú ý lắng nghe để giữ lại các từ này trong transcript (chỉ xóa khi chắc chắn đó là tiếng ồn hoặc không có phát âm). Tuyệt đối không tự ý cắt xén nếu audio có âm thanh mấp máy môi hoặc bị lướt.
 
@@ -149,30 +147,19 @@ async def get_response_async(task_id, audio_bytes, transcript) -> AnnotationResp
         text = response_gemini.text.strip()
 
         # Loại bỏ markdown code block nếu model trả về thừa
-        if "```" in text:
-            start = text.find("```")
-            first_newline = text.find("\n", start)
-            if first_newline != -1:
-                end = text.rfind("```")
-                if end > first_newline:
-                    text = text[first_newline+1:end].strip()
+        if text.startswith("```json"):
+            text = text[7:]
+        elif text.startswith("```"):
+            text = text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+        text = text.strip()
 
         # Trích xuất chính xác đối tượng JSON
         start_brace = text.find("{")
-        if start_brace != -1:
-            try:
-                decoder = json.JSONDecoder()
-                obj, end_idx = decoder.raw_decode(text, start_brace)
-                text = text[start_brace:end_idx]
-            except Exception as e:
-                cleaned_text = re.sub(r'"\s*\n+\s*"(\s*[,}])', r'"\1', text[start_brace:])
-                try:
-                    obj, end_idx = decoder.raw_decode(cleaned_text, 0)
-                    text = cleaned_text[:end_idx]
-                except Exception:
-                    end_brace = text.rfind("}")
-                    if end_brace > start_brace:
-                        text = text[start_brace:end_brace+1]
+        end_brace = text.rfind("}")
+        if start_brace != -1 and end_brace != -1 and end_brace > start_brace:
+            text = text[start_brace:end_brace+1]
 
         # Kiểm tra JSON hợp lệ và parse
         try:
