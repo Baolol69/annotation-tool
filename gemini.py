@@ -53,9 +53,7 @@ SYSTEM_INSTRUCTION = """Nghe audio và sửa transcript nháp theo luật:
 - Vấp lặp: Giữ 1 từ nếu vô nghĩa (thì thì->thì), giữ nguyên nếu có nghĩa (năm năm).
 - Nhiễu quá lớn/Không nghe được: Giữ nguyên transcript nháp, ghi lỗi vào error_alert.
 
-2. MC/BLV/PHÓNG VIÊN:
-- Giọng chuẩn/trang trọng: XÓA TRẮNG transcript, đánh dấu MC.
-- Giọng địa phương: Vẫn nghe và sửa transcript bình thường, đánh dấu MC.
+2. MC/BLV/PHÓNG VIÊN: Đánh dấu MC
 
 3. GENDER: M(nam), F(nữ), N/A(méo tiếng/không rõ người chính).
 4. TOPIC:
