@@ -513,11 +513,6 @@ async def api_polling_loop():
                     
                     global_task_state = TaskState() # Reset UI state
                     await action_queue.put(("load_next_task", None))
-                            
-                    asyncio.create_task(do_skip_post(url, payload, current_task.task_id))
-                    
-                    global_task_state = TaskState()
-                    await action_queue.put(("load_next_task", None))
                     
             except Exception as e:
                 print(f"[ERROR] aiohttp loop error: {e}", flush=True)
