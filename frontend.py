@@ -70,6 +70,20 @@ def wait_for_next_task():
 
                     gemini_resp = data.get("gemini_response") or {}
                     
+                    # Map gender
+                    raw_gender = gemini_resp.get("gender", "N/A")
+                    gender_map = {"Male": "M", "Female": "F", "Unknown": "N/A"}
+                    mapped_gender = gender_map.get(raw_gender, raw_gender)
+                    if mapped_gender not in ["M", "F", "N/A"]:
+                        mapped_gender = "N/A"
+                        
+                    # Map topic
+                    raw_topic = gemini_resp.get("topic", "Others")
+                    topic_map = {"Other": "Others"}
+                    mapped_topic = topic_map.get(raw_topic, raw_topic)
+                    if mapped_topic not in ["Sport", "News", "Podcast", "Others"]:
+                        mapped_topic = "Others"
+                    
                     # YIELD 1: Hiển thị Audio và kết quả AI ngay lập tức
                     print(f"[FRONTEND] YIELD: Trả Audio và AI về giao diện ngay lập tức...", flush=True)
                     yield (
@@ -77,8 +91,8 @@ def wait_for_next_task():
                         audio_html,
                         gemini_resp.get("transcript", ""),
                         task_data["region"],
-                        gemini_resp.get("gender", "N/A"),
-                        gemini_resp.get("topic", "Others"),
+                        mapped_gender,
+                        mapped_topic,
                         gr.update(interactive=True),
                         gr.update(interactive=True)
                     )
