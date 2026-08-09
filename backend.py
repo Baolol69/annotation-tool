@@ -474,8 +474,8 @@ async def api_polling_loop():
                     if data and data.audio_issues:
                         new_result.append({"value": {"choices": data.audio_issues}, "id": generate_id(), "from_name": "audio_issues", "to_name": "audio", "type": "choices", "origin": "manual"})
 
-                    real_lead_time = time.time() - current_task_start_time
-                    base_time = max(real_lead_time, 10.0)
+                    #real_lead_time = time.time() - current_task_start_time
+                    base_time = 10
                     lead_time_val = round(base_time + random.uniform(1.5, 20.5), 3)
                     payload = {
                         "lead_time": lead_time_val,
