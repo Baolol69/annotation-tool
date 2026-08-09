@@ -94,7 +94,8 @@ def wait_for_next_task():
                         mapped_gender,
                         mapped_topic,
                         gr.update(interactive=True),
-                        gr.update(interactive=True)
+                        gr.update(interactive=True),
+                        gemini_resp.get("error_alert", "")
                     )
                     break
         except requests.exceptions.ReadTimeout:
@@ -118,7 +119,8 @@ def build_ui():
             gr.skip(),
             gr.skip(),
             gr.update(interactive=False),
-            gr.update(interactive=False)
+            gr.update(interactive=False),
+            gr.skip()
         )
         
         payload = {
@@ -135,7 +137,7 @@ def build_ui():
             current_task_id = None # Reset so we wait for the next one
         except Exception as e:
             print(f"[ERROR] Submit failed: {e}", flush=True)
-            yield gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.update(interactive=True), gr.update(interactive=True)
+            yield gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.update(interactive=True), gr.update(interactive=True), gr.skip()
             return
         
         print(f"[FRONTEND] Bắt đầu đợi task tiếp theo...", flush=True)
@@ -153,7 +155,8 @@ def build_ui():
             gr.skip(),
             gr.skip(),
             gr.update(interactive=False),
-            gr.update(interactive=False)
+            gr.update(interactive=False),
+            gr.skip()
         )
         
         payload = {
@@ -167,7 +170,7 @@ def build_ui():
             current_task_id = None
         except Exception as e:
             print(f"[ERROR] Skip failed: {e}")
-            yield gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.update(interactive=True), gr.update(interactive=True)
+            yield gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.update(interactive=True), gr.update(interactive=True), gr.skip()
             return
             
         yield from wait_for_next_task()
@@ -196,10 +199,17 @@ def build_ui():
             label="Audio Quality Issues"
         )
 
+        error_alert_box = gr.Textbox(
+            label="Error Alert", 
+            lines=2, 
+            placeholder="Các lỗi do AI phát hiện hoặc cần ghi chú thêm...",
+            interactive=True
+        )
+
         submit_button = gr.Button("Submit", variant="primary")
         skip_button = gr.Button("Skip", variant="primary")
 
-        outputs_list = [metadata_view, audio_player, transcript, dialect, gender, topic, submit_button, skip_button]
+        outputs_list = [metadata_view, audio_player, transcript, dialect, gender, topic, submit_button, skip_button, error_alert_box]
 
         # Trigger on load (Replaced with a manual button to prevent infinite loading on startup)
         connect_button = gr.Button("🔴 BẤM VÀO ĐÂY ĐỂ BẮT ĐẦU TẢI TASK", variant="primary")
