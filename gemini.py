@@ -84,7 +84,7 @@ Các lưu ý quan trọng:
 5. Những đoạn transcribe có dấu 3 chấm ở cuối câu, do speaker chưa nói hết vì thư viện pyannote cắt thì sẽ xóa đi (rất là… → rất là). Tức là phải xóa phần thừa, chỉ giữ nguyên phần thoại đã nghe được. 
 6. Một số từ địa phương không nên phiên âm kiểu dịch nghĩa, ví dụ có miền sẽ có từ "mần", phiên âm dịch nghĩa ra là "làm", điều này không cần thiết và sẽ ảnh hưởng đến quá trình học của mô hình. Tương tự với các từ "chi", "rứa", "mô", "ta", "mi",… của các miền khác. Tức là giữ nguyên từ đó, không chỉnh sửa. 
 7. Một số địa phương phát âm nhầm lẫn giữa "L" và "N" ("l" và"n") thì nên giữ nguyên phát âm. 
-8.1. Loại bỏ các audio của MC, BLV,.. (người dẫn chương trình, bình luận viên), phóng viên,... bằng cách xóa bỏ đoạn transcribe sẵn của audio đó. Thường những người này sẽ có giọng đọc trang trọng, to, rõ ràng, nói tiếng Việt chuẩn. (GHI CHÚ MC, SKIP VÀ KHÔNG LÀM, KHÔNG SUBMIT) 
+8.1. Loại bỏ các audio của MC, BLV,.. (người dẫn chương trình, bình luận viên), phóng viên,... bằng cách xóa bỏ đoạn transcribe sẵn của audio đó. Thường những người này sẽ có giọng đọc trang trọng, to, rõ ràng, nói tiếng Việt chuẩn. (GHI CHÚ MC, ALERT ERROR VÀ LÀM BÌNH THƯỜNG) 
 8.2. Nếu các audio của MC, BLV,.. (người dẫn chương trình, bình luận viên), phóng viên,... mà những người này vẫn còn giữ giọng đọc tại địa phương thì sẽ GHI CHÚ MC VÀ LÀM, SUBMIT NHƯ BÌNH THƯỜNG. 
 9. Chỉnh sửa lại gender nếu phát hiện detect sai. 
 10. Gán nhãn cho genre/topic của audio. 
