@@ -127,7 +127,7 @@ def build_ui():
         print(f"[FRONTEND] Bắt đầu đợi task tiếp theo...", flush=True)
         yield from wait_for_next_task()
 
-    def skip():
+    def skip(transcript:str, dialect:str, gender:str, topic:str, audio_issues:List[str]):
         global current_task_id
         
         # Dừng audio ngay lập tức và vô hiệu hoá nút bấm
@@ -142,8 +142,14 @@ def build_ui():
             gr.update(interactive=False)
         )
         
+        payload = {
+            "transcript": transcript,
+            "gender": gender,
+            "topic": topic,
+            "audio_issues": audio_issues
+        }
         try:
-            requests.post(f"{BACKEND_URL}/api/skip", timeout=5)
+            requests.post(f"{BACKEND_URL}/api/skip", json=payload, timeout=5)
             current_task_id = None
         except Exception as e:
             print(f"[ERROR] Skip failed: {e}")
@@ -210,7 +216,7 @@ def build_ui():
         
         # Trigger on click
         submit_button.click(fn=submit, inputs=[transcript, dialect, gender, topic, quality_issues], outputs=outputs_list)
-        skip_button.click(fn=skip, inputs=[], outputs=outputs_list)
+        skip_button.click(fn=skip, inputs=[transcript, dialect, gender, topic, quality_issues], outputs=outputs_list)
 
         return demo
 

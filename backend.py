@@ -447,8 +447,8 @@ async def api_polling_loop():
                     # Báo hiệu UI cập nhật (chỉ cần YIELD 1 lần)
                     task_received_event.set()
                     
-                elif action == "submit":
-                    print(f"[DEBUG] Gửi lệnh Submit ngầm...", flush=True)
+                elif action == "submit" or action == "skip":
+                    print(f"[DEBUG] Gửi lệnh {action.capitalize()} ngầm...", flush=True)
                     current_task = global_task_state.task
                     
                     def generate_id(length=10):
@@ -463,13 +463,13 @@ async def api_polling_loop():
                             "type": "choices", 
                             "origin": "manual"
                         })
-                    if data.transcript:
+                    if data and data.transcript:
                         new_result.append({"value": {"text": [data.transcript]}, "id": generate_id(), "from_name": "transcript", "to_name": "audio", "type": "textarea", "origin": "manual"})
-                    if data.gender:
+                    if data and data.gender:
                         new_result.append({"value": {"choices": [data.gender]}, "id": generate_id(), "from_name": "gender", "to_name": "audio", "type": "choices", "origin": "manual"})
-                    if data.topic:
+                    if data and data.topic:
                         new_result.append({"value": {"choices": [data.topic]}, "id": generate_id(), "from_name": "topic", "to_name": "audio", "type": "choices", "origin": "manual"})
-                    if data.audio_issues:
+                    if data and data.audio_issues:
                         new_result.append({"value": {"choices": data.audio_issues}, "id": generate_id(), "from_name": "audio_issues", "to_name": "audio", "type": "choices", "origin": "manual"})
 
                     real_lead_time = time.time() - current_task_start_time
@@ -484,6 +484,8 @@ async def api_polling_loop():
                         "started_at": datetime.datetime.utcnow().isoformat() + "Z",
                         "project": current_task.project_id
                     }
+                    if action == "skip":
+                        payload["was_cancelled"] = True
                     
                     url = f"{HUMANSIGNAL_BASE_URL}/api/tasks/{current_task.task_id}/annotations?project={current_task.project_id}"
                     
@@ -496,7 +498,8 @@ async def api_polling_loop():
                                     if 'db_pool' in globals() and db_pool:
                                         try:
                                             async with db_pool.acquire() as conn:
-                                                await conn.execute("UPDATE gemini_cache SET status = 'submitted' WHERE task_id = $1", int(task_id))
+                                                status = 'skipped' if is_skip else 'submitted'
+                                                await conn.execute("UPDATE gemini_cache SET status = $1 WHERE task_id = $2", status, int(task_id))
                                         except Exception as db_e:
                                             print(f"[ERROR] Lỗi update DB sau submit: {db_e}")
                                 else:
@@ -504,44 +507,10 @@ async def api_polling_loop():
                         except Exception as e:
                             print(f"[ERROR] Lỗi submit: {e}")
                             
-                    asyncio.create_task(do_post(url, payload, current_task.task_id))
+                    asyncio.create_task(do_post(url, payload, current_task.task_id, is_skip=(action == "skip")))
                     
                     global_task_state = TaskState() # Reset UI state
                     await action_queue.put(("load_next_task", None))
-                    
-                elif action == "skip":
-                    print(f"[DEBUG] Gửi lệnh Skip ngầm...", flush=True)
-                    current_task = global_task_state.task
-                    real_lead_time = time.time() - current_task_start_time
-                    base_time = max(real_lead_time, 10.0)
-                    lead_time_val = round(base_time + random.uniform(1.5, 20.5), 3)
-                    payload = {
-                        "lead_time": lead_time_val,
-                        "result": [],
-                        "draft_id": None,
-                        "parent_prediction": current_task.parent_prediction_id,
-                        "parent_annotation": None,
-                        "started_at": datetime.datetime.utcnow().isoformat() + "Z",
-                        "project": current_task.project_id,
-                        "was_cancelled": True
-                    }
-                    url = f"{HUMANSIGNAL_BASE_URL}/api/tasks/{current_task.task_id}/annotations?project={current_task.project_id}"
-                    
-                    async def do_skip_post(url, payload, task_id):
-                        try:
-                            async with session.post(url, json=payload) as response:
-                                if response.status in (200, 201):
-                                    print("[DEBUG] Skip API nền thành công!", flush=True)
-                                    if 'db_pool' in globals() and db_pool:
-                                        try:
-                                            async with db_pool.acquire() as conn:
-                                                await conn.execute("UPDATE gemini_cache SET status = 'skipped' WHERE task_id = $1", int(task_id))
-                                        except Exception as db_e:
-                                            print(f"[ERROR] Lỗi update DB sau skip: {db_e}")
-                                else:
-                                    print(f"[ERROR] Skip API thất bại, status = {response.status}", flush=True)
-                        except Exception as e:
-                            print(f"[ERROR] Lỗi skip: {e}")
                             
                     asyncio.create_task(do_skip_post(url, payload, current_task.task_id))
                     
@@ -644,10 +613,10 @@ async def submit_task(task: SubmitTask):
     return {"status": "queued"}
 
 @app.post("/api/skip")
-async def skip_task():
+async def skip_task(task: SubmitTask):
     task_ready_event.clear()
     task_received_event.clear()
-    await action_queue.put(("skip", None))
+    await action_queue.put(("skip", task))
     return {"status": "queued"}
 
 import os
