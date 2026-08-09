@@ -491,7 +491,7 @@ async def api_polling_loop():
                     
                     url = f"{HUMANSIGNAL_BASE_URL}/api/tasks/{current_task.task_id}/annotations?project={current_task.project_id}"
                     
-                    async def do_post(url, payload, task_id):
+                    async def do_post(url, payload, task_id, is_skip=False):
                         try:
                             async with session.post(url, json=payload) as response:
                                 resp_text = await response.text()
