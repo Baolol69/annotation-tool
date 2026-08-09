@@ -204,19 +204,21 @@ async def pagination_loop(session: aiohttp.ClientSession, project_id: str, prefe
     page_file = "current_page.txt"
     
     async def save_page(page):
+        # Lưu lùi lại 1 page để đảm bảo không bỏ sót task nếu app bị khởi động lại
+        save_val = max(1, page - 1)
         if 'db_pool' in globals() and db_pool:
             try:
                 async with db_pool.acquire() as conn:
                     await conn.execute(
                         "INSERT INTO app_state (key, value) VALUES ('current_page', $1) "
                         "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
-                        str(page)
+                        str(save_val)
                     )
             except Exception: pass
         else:
             try:
                 with open(page_file, "w") as f:
-                    f.write(str(page))
+                    f.write(str(save_val))
             except Exception: pass
 
     if 'db_pool' in globals() and db_pool:
