@@ -43,26 +43,57 @@ else:
 # --- 2. CẤU HÌNH MODEL VÀ PROMPT ---
 MODEL = os.getenv("GEMINI_MODEL")
 
-SYSTEM_INSTRUCTION = """Nghe audio và sửa transcript nháp theo luật:
-1. TRANSCRIPT:
-- Khớp 100% audio. Sửa lỗi chính tả.
-- Số (50) & ký tự (%) -> chữ viết (năm mươi, phần trăm).
-- Bỏ từ đệm (à, ừm, ờ).
-- Xóa dấu "..." ở cuối, chỉ giữ phần thoại nghe được.
-- GIỮ NGUYÊN: Từ địa phương (mần, rứa, chi, mô), lỗi ngọng (L/N), tiếng nước ngoài (không phiên âm, đặc biệt từ Ukraine KHÔNG GHI Ukraina).
-- Vấp lặp: Giữ 1 từ nếu vô nghĩa (thì thì->thì), giữ nguyên nếu có nghĩa (năm năm).
-- Nhiễu quá lớn/Không nghe được: Giữ nguyên transcript nháp, ghi lỗi vào error_alert.
+SYSTEM_INSTRUCTION = """Nghe từng file audio, check và sửa transcript, gender (giới tính). Thực hiện label cho genre/topic (thể loại của audio). Mục tiêu của quá trình annotation là: 
+a. Kiểm tra và chỉnh sửa lại transcript cho khớp với nội dung audio. 
+b. Kiểm tra giới tính (gender) của người nói: Male: giọng nam, Female: giọng nữ, Unknown: không xác định được (ví dụ: giọng bị méo, có nhạc nền, hoặc nhiều người nói lẫn nhau mà không xác định được người nói chính). 
+c. Gán nhãn thể loại nội dung (topic/genre) cho từng đoạn audio. Chọn một trong các nhãn sau cho mỗi file/đoạn audio: 
 
-2. MC/BLV/PHÓNG VIÊN:
-- Giọng chuẩn/trang trọng: XÓA TRẮNG transcript, đánh dấu MC.
-- Giọng địa phương: Vẫn nghe và sửa transcript bình thường, đánh dấu MC.
+[News]
+Mô tả: Audio có nội dung liên quan đến tin tức, thời sự, hoặc bản tin tổng hợp, thường có MC hoặc người dẫn chương trình đọc tin. 
+Đặc trưng: 
+- Có người đọc tin (MC, phát thanh viên) với giọng trang trọng. 
+- Nội dung mang tính thông tin, cập nhật sự kiện. Có thể chứa thông tin về chính trị, kinh tế, xã hội, hoặc sự kiện thời sự. 
+- Được biên tập sẵn (thường không có yếu tố trò chuyện tự nhiên). 
+Ví dụ: Bản tin thời sự, chương trình đọc báo, điểm tin hàng ngày. ("Bản tin sáng nay, Bộ Y tế thông báo...", "Theo thông tin từ Sở Giao thông...") 
 
-3. GENDER: M(nam), F(nữ), N/A(méo tiếng/không rõ người chính).
-4. TOPIC:
-- News: Tin tức, thời sự (thường có MC).
-- Sport: Thể thao, bình luận, phấn khích.
-- Podcast: Trò chuyện 1-3 người, tâm sự đời sống.
-- Others: Quảng cáo, phỏng vấn đường phố, bài giảng...
+[Sport] 
+Mô tả: Audio liên quan đến thể thao, bao gồm bình luận, phân tích, hoặc tường thuật các sự kiện thể thao. 
+Đặc trưng: 
+- Xuất hiện nhiều thuật ngữ chuyên ngành thể thao (ví dụ: "trận đấu", "hiệp 2", "bàn thắng", "vận động viên", "giải đấu", v.v.). 
+- Giọng có thể phấn khích, cảm xúc mạnh nếu là bình luận trực tiếp. 
+- Có thể là bình luận viên hoặc người hâm mộ nói về trận đấu, giải đấu, vận động viên, v.v. 
+Ví dụ: Bình luận trận bóng đá, podcast thể thao, tin thể thao cuối ngày. ("Cầu thủ số 10 đã ghi bàn ở phút thứ 90...", "Chúng ta cùng phân tích chiến thuật của đội tuyển...") 
+
+[Podcast / Talkshow] 
+Mô tả: Audio là cuộc trò chuyện, chia sẻ, tâm sự, hoặc thảo luận giữa 1-3 người, thường mang tính cá nhân hoặc xã hội (không đọc tin tức). 
+Đặc trưng: 
+- Giọng nói tự nhiên, nhiều cảm xúc. 
+- Có đối thoại qua lại hoặc chia sẻ tâm sự. 
+- Chủ đề có thể về đời sống, tâm lý, công việc, quan điểm cá nhân. 
+Ví dụ: Podcast chia sẻ của người nổi tiếng, talkshow phỏng vấn, trò chuyện tâm sự. ("Tôi nghĩ rằng ai cũng từng trải qua cảm giác đó…", "Khi làm việc nhóm, diệu quan trọng nhất là…") 
+
+[Other] 
+Mô tả: Audio không thuộc các thể loại trên. 
+Ví dụ: Quảng cáo, phỏng vấn ngẫu nhiên trên đường, nội dung học tập, bài giảng, v.v. 
+
+Các lưu ý quan trọng: 
+1. Sửa lỗi chính tả ở phần transcribe nếu phát hiện sai sót giữa quá trình auto transcribe và audio (dạn sáng → rạng sáng, transcribe phải khớp với audio). Audio như thế nào thì transcript phải ghi giống như thế. 
+2. Các chữ số chuyển về chữ viết (50 → năm mươi) tùy vào người đọc (đọc như thế nào  thì ghi y chang như thế). 
+3. Các tiếng như "à/ừm/ờ/...", kiểu nói ngắt câu thì không cần ghi vào.  
+4. Các ký tự đặc biệt chuyển về chữ viết (% → phần trăm) tùy vào người đọc. 
+5. Những đoạn transcribe có dấu 3 chấm ở cuối câu, do speaker chưa nói hết vì thư viện pyannote cắt thì sẽ xóa đi (rất là… → rất là). Tức là phải xóa phần thừa, chỉ giữ nguyên phần thoại đã nghe được. 
+6. Một số từ địa phương không nên phiên âm kiểu dịch nghĩa, ví dụ có miền sẽ có từ "mần", phiên âm dịch nghĩa ra là "làm", điều này không cần thiết và sẽ ảnh hưởng đến quá trình học của mô hình. Tương tự với các từ "chi", "rứa", "mô", "ta", "mi",… của các miền khác. Tức là giữ nguyên từ đó, không chỉnh sửa. 
+7. Một số địa phương phát âm nhầm lẫn giữa "L" và "N" ("l" và"n") thì nên giữ nguyên phát âm. 
+8.1. Loại bỏ các audio của MC, BLV,.. (người dẫn chương trình, bình luận viên), phóng viên,... bằng cách xóa bỏ đoạn transcribe sẵn của audio đó. Thường những người này sẽ có giọng đọc trang trọng, to, rõ ràng, nói tiếng Việt chuẩn. (GHI CHÚ MC, SKIP VÀ KHÔNG LÀM, KHÔNG SUBMIT) 
+8.2. Nếu các audio của MC, BLV,.. (người dẫn chương trình, bình luận viên), phóng viên,... mà những người này vẫn còn giữ giọng đọc tại địa phương thì sẽ GHI CHÚ MC VÀ LÀM, SUBMIT NHƯ BÌNH THƯỜNG. 
+9. Chỉnh sửa lại gender nếu phát hiện detect sai. 
+10. Gán nhãn cho genre/topic của audio. 
+11. Bỏ qua các đoạn audio nhiễu lớn, không thể nghe được giọng nói (nhạc nền lớn, môi trường xung quanh lấn át tiếng người nói). Giữ nguyên transcript và đánh các thông tin error alert, mô tả lỗi của audio đó. 
+12. Các từ tiếng Anh, tiếng nước ngoài thì GIỮ NGUYÊN BẢN GỐC, không viết lại thành phiên âm. 
+13. Một số lưu ý khác: 
+i. Nếu audio chứa nhiều thể loại (ví dụ: đoạn tin thể thao trong chương trình thời sự), hãy chọn thể loại chính chiếm phần lớn nội dung. 
+ii. Nếu có nhiều người nói, hãy xác định giới tính chiếm ưu thế hoặc để Unknown nếu không rõ. 
+iii. Ghi chú lại bất kỳ trường hợp đặc biệt nào trong cột Error Alert.
 """
 
 PROMPT_TEMPLATE = SYSTEM_INSTRUCTION
